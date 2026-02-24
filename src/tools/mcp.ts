@@ -1,0 +1,137 @@
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createMCPClient } from "@ai-sdk/mcp";
+import { Experimental_StdioMCPTransport as StdioClientTransport } from "@ai-sdk/mcp/mcp-stdio";
+import { env } from "../env/index.js";
+
+interface MCPServerHTTP {
+  type: "http";
+  url: string;
+  headers?: Record<string, string>;
+}
+
+interface MCPServerSSE {
+  type: "sse";
+  url: string;
+  headers?: Record<string, string>;
+}
+
+interface MCPServerStdio {
+  type: "stdio";
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+}
+
+type MCPServerConfig = MCPServerHTTP | MCPServerSSE | MCPServerStdio;
+
+interface MCPConfig {
+  mcpServers: Record<string, MCPServerConfig>;
+}
+
+export async function loadMCPConfig(): Promise<MCPConfig> {
+  const configLocation = env.MCP_CONFIG_PATH;
+  const filePath = configLocation.startsWith("file://")
+    ? fileURLToPath(configLocation)
+    : path.resolve(configLocation);
+  const rawConfig = await fs.readFile(filePath, "utf-8").catch((err) => {
+    throw new Error(
+      `Failed to read MCP config from ${filePath}: ${err.message}`
+    );
+  });
+  const config = JSON.parse(rawConfig) as MCPConfig;
+  // basic validation
+  if (!config.mcpServers || typeof config.mcpServers !== "object") {
+    throw new Error("Invalid MCP config: missing or invalid mcpServers");
+  }
+  for (const [name, server] of Object.entries(config.mcpServers)) {
+    if (!server.type || !["http", "sse", "stdio"].includes(server.type)) {
+      throw new Error(
+        `Invalid MCP server config for ${name}: missing or invalid type`
+      );
+    }
+    if ((server.type === "http" || server.type === "sse") && !server.url) {
+      throw new Error(`Invalid MCP server config for ${name}: missing url`);
+    }
+    if (server.type === "stdio" && !server.command) {
+      throw new Error(`Invalid MCP server config for ${name}: missing command`);
+    }
+  }
+  return config;
+}
+
+export async function getMCPServers() {
+  const config = await loadMCPConfig();
+  const serverConfig = config.mcpServers;
+  if (!serverConfig) {
+    throw new Error("No MCP servers defined in config");
+  }
+
+  const clients = [];
+  for (const server of Object.values(serverConfig)) {
+    switch (server.type) {
+      case "http":
+        clients.push(
+          await createMCPClient({
+            transport: {
+              type: "http",
+              url: server.url,
+              headers: server.headers,
+            },
+          })
+        );
+        break;
+      case "sse":
+        clients.push(
+          await createMCPClient({
+            transport: {
+              type: "sse",
+              url: server.url,
+              headers: server.headers,
+            },
+          })
+        );
+        break;
+      case "stdio":
+        clients.push(
+          await createMCPClient({
+            transport: new StdioClientTransport({
+              command: server.command,
+              args: server.args,
+              env: server.env,
+            }),
+          })
+        );
+        break;
+    }
+  }
+
+  if (clients.length === 0) {
+    throw new Error("No MCP servers created from config");
+  }
+
+  return clients;
+}
+
+export async function createToolset() {
+  const mcpClients = await mcpConfig;
+  const toolSets = await Promise.all(
+    mcpClients.map((client) => client.tools())
+  );
+  const tools = toolSets.reduce<Record<string, unknown>>((acc, set) => {
+    for (const [name, tool] of Object.entries(set)) {
+      if (Object.hasOwn(acc, name)) {
+        throw new Error(
+          `MCP tool name collision detected: multiple servers define a tool named "${name}". ` +
+            "Please ensure tool names are unique across MCP servers or implement a conflict resolution strategy."
+        );
+      }
+      acc[name] = tool;
+    }
+    return acc;
+  }, {});
+  return tools;
+}
+
+export const mcpConfig = getMCPServers();
