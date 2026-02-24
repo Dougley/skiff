@@ -1,0 +1,2 @@
+ALTER TABLE "scheduled_tasks" ADD COLUMN "timezone" text DEFAULT 'UTC' NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_scheduled_tasks_due" ON "scheduled_tasks" USING btree ("enabled","next_run_at");
