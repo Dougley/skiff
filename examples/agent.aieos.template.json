@@ -1,0 +1,236 @@
+{
+  "standard": {
+    "protocol": "AIEOS",
+    "version": "1.1.0",
+    "schema_url": "https://aieos.org/schema/v1.1/aieos.schema.json"
+  },
+  "metadata": {
+    "instance_id": "00000000-template-0000-0000-000000000000",
+    "instance_version": "1.0",
+    "generator": "skiffboat",
+    "created_at": "2026-02-17",
+    "last_updated": "2026-02-17"
+  },
+  "capabilities": {
+    "skills": [
+      {
+        "name": "workspace-tools",
+        "description": "File operations, shell access, and web fetching; scoped per security policy.",
+        "uri": "aieos://capability/tools",
+        "version": "1.0",
+        "auto_activate": true,
+        "priority": 1
+      }
+    ]
+  },
+  "identity": {
+    "names": {
+      "first": "<FIRST>",
+      "middle": "",
+      "last": "",
+      "nickname": "<NICKNAME>"
+    },
+    "bio": {
+      "birthday": "",
+      "age_biological": 0,
+      "age_perceived": 0,
+      "gender": ""
+    },
+    "origin": {
+      "nationality": "",
+      "ethnicity": "",
+      "birthplace": {
+        "city": "",
+        "country": ""
+      }
+    },
+    "residence": {
+      "current_city": "",
+      "current_country": "",
+      "dwelling_type": ""
+    }
+  },
+  "physicality": {
+    "face": {
+      "shape": "",
+      "skin": {
+        "tone": "",
+        "texture": "",
+        "details": []
+      },
+      "eyes": {
+        "color": "",
+        "shape": "",
+        "eyebrows": "",
+        "corrective_lenses": ""
+      },
+      "hair": {
+        "color": "",
+        "style": "",
+        "texture": ""
+      },
+      "facial_hair": "",
+      "nose": "",
+      "mouth": "",
+      "distinguishing_features": []
+    },
+    "body": {
+      "height_cm": 0,
+      "weight_kg": 0,
+      "somatotype": "",
+      "build_description": "",
+      "posture": "",
+      "scars_tattoos": []
+    },
+    "style": {
+      "aesthetic_archetype": "",
+      "clothing_preferences": [],
+      "accessories": [],
+      "color_palette": []
+    },
+    "image_prompts": {
+      "portrait": "",
+      "full_body": ""
+    }
+  },
+  "psychology": {
+    "neural_matrix": {
+      "creativity": 0.5,
+      "empathy": 0.5,
+      "logic": 0.5,
+      "adaptability": 0.5,
+      "charisma": 0.5,
+      "reliability": 0.5
+    },
+    "traits": {
+      "ocean": {
+        "openness": 0.5,
+        "conscientiousness": 0.5,
+        "extraversion": 0.5,
+        "agreeableness": 0.5,
+        "neuroticism": 0.5
+      },
+      "mbti": "",
+      "enneagram": "",
+      "temperament": ""
+    },
+    "moral_compass": {
+      "alignment": "",
+      "core_values": [],
+      "conflict_resolution_style": ""
+    },
+    "mental_patterns": {
+      "decision_making_style": "",
+      "attention_span": "",
+      "learning_style": ""
+    },
+    "emotional_profile": {
+      "base_mood": "",
+      "volatility": 0.0,
+      "resilience": "",
+      "triggers": {
+        "joy": [],
+        "anger": [],
+        "sadness": []
+      }
+    },
+    "idiosyncrasies": {
+      "phobias": [],
+      "obsessions": [],
+      "tics": []
+    }
+  },
+  "linguistics": {
+    "voice": {
+      "tts_config": {
+        "provider": "",
+        "voice_id": "",
+        "stability": 0.0,
+        "similarity_boost": 0.0
+      },
+      "acoustics": {
+        "pitch": "",
+        "speed": "",
+        "roughness": 0.0,
+        "breathiness": 0.0
+      },
+      "accent": {
+        "region": "",
+        "strength": 0.0
+      }
+    },
+    "text_style": {
+      "formality_level": 0.5,
+      "verbosity_level": 0.5,
+      "vocabulary_level": "",
+      "slang_usage": false,
+      "style_descriptors": []
+    },
+    "syntax": {
+      "sentence_structure": "",
+      "use_contractions": true,
+      "active_passive_ratio": 0.9
+    },
+    "interaction": {
+      "turn_taking": "",
+      "dominance_score": 0.5,
+      "emotional_coloring": ""
+    },
+    "idiolect": {
+      "catchphrases": [],
+      "forbidden_words": [],
+      "hesitation_markers": false
+    }
+  },
+  "history": {
+    "origin_story": "",
+    "education": {
+      "level": "",
+      "field": "",
+      "institution": "",
+      "graduation_year": 0
+    },
+    "occupation": {
+      "title": "",
+      "industry": "",
+      "years_experience": 0,
+      "previous_jobs": []
+    },
+    "family": {
+      "relationship_status": "",
+      "parents": "",
+      "siblings": "",
+      "children": "",
+      "pets": ""
+    },
+    "key_life_events": []
+  },
+  "interests": {
+    "hobbies": [],
+    "favorites": {
+      "music_genre": "",
+      "book": "",
+      "movie": "",
+      "color": "",
+      "food": "",
+      "season": ""
+    },
+    "aversions": [],
+    "lifestyle": {
+      "diet": "",
+      "sleep_schedule": "",
+      "digital_habits": ""
+    }
+  },
+  "motivations": {
+    "core_drive": "",
+    "goals": {
+      "short_term": [],
+      "long_term": []
+    },
+    "fears": {
+      "rational": [],
+      "irrational": []
+    }
+  }
+}
