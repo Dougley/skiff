@@ -30,8 +30,8 @@ interface MCPConfig {
   mcpServers: Record<string, MCPServerConfig>;
 }
 
-export async function loadMCPConfig(): Promise<MCPConfig> {
-  const configLocation = env.MCP_CONFIG_PATH;
+export async function loadMCPConfig(configPath?: string): Promise<MCPConfig> {
+  const configLocation = configPath ?? env.MCP_CONFIG_PATH;
   const filePath = configLocation.startsWith("file://")
     ? fileURLToPath(configLocation)
     : path.resolve(configLocation);
@@ -61,8 +61,8 @@ export async function loadMCPConfig(): Promise<MCPConfig> {
   return config;
 }
 
-export async function getMCPServers() {
-  const config = await loadMCPConfig();
+export async function getMCPServers(configPath?: string) {
+  const config = await loadMCPConfig(configPath);
   const serverConfig = config.mcpServers;
   if (!serverConfig) {
     throw new Error("No MCP servers defined in config");

@@ -10,6 +10,7 @@ import { env } from "./env/index.js";
 import { startHeartbeat } from "./heartbeat/index.js";
 import { colors, logger } from "./logger/index.js";
 import { startScheduler } from "./scheduler/index.js";
+import { initSkills } from "./skills/index.js";
 
 function printBanner(metrics: {
   agentName: string;
@@ -62,6 +63,8 @@ async function main() {
 
   const aieos = await loadAieosFile(env.AIEOS_FILE);
   setAieos(aieos);
+
+  await initSkills(env.SKILLS_DIR);
 
   await runMigrations();
   await startClient();

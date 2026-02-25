@@ -7,6 +7,7 @@ import { createToolset as createMCPToolset } from "./mcp.js";
 import { createMemoryTools } from "./memory.js";
 import { createSchedulerTools } from "./scheduler.js";
 import { createShellTools } from "./shell.js";
+import { createSkillTools } from "./skills.js";
 import { createTopicTools } from "./topic.js";
 import { createUserInputTools } from "./user-input.js";
 import { createWebTools } from "./web.js";
@@ -38,5 +39,6 @@ export async function createToolSet(ctx: DiscordToolContext) {
     ...(env.SHELL_ENABLED && !disabled.has("shell") ? createShellTools() : {}),
     ...(!disabled.has("mcp") ? await createMCPToolset() : {}),
     ...(!disabled.has("user-input") ? createUserInputTools(ctx) : {}),
+    ...(!disabled.has("skills") ? createSkillTools() : {}),
   };
 }

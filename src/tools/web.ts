@@ -2,6 +2,27 @@ import { tool } from "ai";
 import { z } from "zod";
 import { env } from "../env/index.js";
 
+// Brave Search rate limiter — 1 request per second sliding window.
+// Queues concurrent calls so they execute sequentially with the required gap.
+const braveRateLimit = {
+  lastRequestTime: 0,
+  queue: Promise.resolve(),
+};
+
+async function throttledBraveFetch(url: string, init: RequestInit): Promise<Response> {
+  braveRateLimit.queue = braveRateLimit.queue.then(async () => {
+    const now = Date.now();
+    const elapsed = now - braveRateLimit.lastRequestTime;
+    const minGap = 1000; // 1 second
+    if (elapsed < minGap) {
+      await new Promise((r) => setTimeout(r, minGap - elapsed));
+    }
+    braveRateLimit.lastRequestTime = Date.now();
+  });
+
+  return braveRateLimit.queue.then(() => fetch(url, init));
+}
+
 type BraveSearchResponse = {
   web?: {
     results?: Array<{
@@ -27,18 +48,24 @@ export const createWebTools = () => {
               "Web search is not configured (missing BRAVE_SEARCH_API_KEY).",
           };
         }
-        const response = await fetch(
-          `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(
-            query
-          )}&count=10`,
-          {
-            headers: {
-              Accept: "application/json",
-              "Accept-Encoding": "gzip",
-              "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY as string,
-            },
-          }
-        );
+        const url = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(
+          query
+        )}&count=10`;
+        const init = {
+          headers: {
+            Accept: "application/json",
+            "Accept-Encoding": "gzip",
+            "X-Subscription-Token": env.BRAVE_SEARCH_API_KEY as string,
+          },
+        };
+        let response = await throttledBraveFetch(url, init);
+        // Retry once on rate limit, respecting the reset header
+        if (response.status === 429) {
+          const reset = response.headers.get("X-RateLimit-Reset");
+          const delay = reset ? Math.min(Number(reset), 5) * 1000 : 2000;
+          await new Promise((r) => setTimeout(r, delay));
+          response = await throttledBraveFetch(url, init);
+        }
         if (!response.ok) {
           return { error: `Brave Search API error: ${response.statusText}` };
         }

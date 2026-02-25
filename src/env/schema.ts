@@ -89,6 +89,7 @@ export const environmentVariableSchema = z.object({
   TOOL_GUILD_RULES: z.string().default(""),
   TOOL_DM_RULES: z.string().default(""),
   TOOL_USER_RULES: z.string().default(""),
+  SKILLS_DIR: z.string().default("./skills"),
 });
 
 export type EnvironmentVariables = z.infer<typeof environmentVariableSchema>;

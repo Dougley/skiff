@@ -10,7 +10,8 @@ export type ToolGroup =
   | "heartbeat"
   | "shell"
   | "mcp"
-  | "user-input";
+  | "user-input"
+  | "skills";
 
 export interface AccessConfig {
   policy: "open" | "disabled" | "allowlist";
@@ -55,6 +56,7 @@ const VALID_TOOL_GROUPS = new Set<ToolGroup>([
   "shell",
   "mcp",
   "user-input",
+  "skills",
 ]);
 
 /**
@@ -142,7 +144,10 @@ export function checkAccess(
       case "disabled":
         return { allowed: false, reason: "DMs are disabled" };
       case "allowlist":
-        if (config.allowedUsers.size > 0 && !config.allowedUsers.has(ctx.userId)) {
+        if (
+          config.allowedUsers.size > 0 &&
+          !config.allowedUsers.has(ctx.userId)
+        ) {
           return { allowed: false, reason: "User not in DM allowlist" };
         }
         return { allowed: true };

@@ -2,6 +2,7 @@ import { buildSystemPrompt } from "../aieos/prompt.js";
 import type { AIEOS } from "../aieos/schema.js";
 import { getAieos, hasAieos } from "../aieos/state.js";
 import { env } from "../env/index.js";
+import { getSkillCatalog } from "../skills/index.js";
 
 import type { MessageContext } from "./conversation-turn.js";
 
@@ -52,6 +53,15 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output. Only your final reply is shown.",
     "The `send_message` tool sends to a different channel. Never use it for normal replies."
   );
+
+  const skillCatalog = getSkillCatalog();
+  if (skillCatalog.length > 0) {
+    parts.push(
+      "\n## Skills",
+      "Use `activate_skill` to load a skill's full instructions when relevant.",
+      ...skillCatalog.map((s) => `- **${s.name}**: ${s.description}`)
+    );
+  }
 
   // Time context: placed after stable sections so it doesn't bust prompt caching
   parts.push(

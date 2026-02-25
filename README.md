@@ -20,6 +20,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 - **Embedded database**, PGlite with pgvector, no external PostgreSQL required
 - **Discord tools**, the LLM can look up server info, users, react to messages, and more
 - **MCP integration**, extend the bot's capabilities with external tool servers
+- **Skills**, on-demand extensibility: the LLM activates skills when relevant, keeping prompt overhead minimal
 - **Customizable personas**, define identity, psychology, speech patterns, and motivations via [AIEOS](https://aieos.org) files
 
 ## Quickstart
@@ -124,7 +125,7 @@ TOOL_DM_RULES=shell,web
 TOOL_USER_RULES=222222222222222222:scheduler
 ```
 
-Available tool groups: `discord`, `aieos`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`.
+Available tool groups: `discord`, `aieos`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
 
 ### Shell
 
@@ -155,6 +156,14 @@ Proactive monitoring — the bot periodically checks in on enabled channels.
 | `HEARTBEAT_QUIET_HOURS_END` | `08:00` | End of quiet hours (`HH:MM`) |
 | `HEARTBEAT_TIMEZONE` | `UTC` | IANA timezone for quiet hours |
 | `HEARTBEAT_ACK_MAX_CHARS` | `300` | Max characters for heartbeat acknowledgments (0-1000) |
+
+### Skills
+
+Skills extend Skiff's capabilities without touching core code. Drop a directory with a `SKILL.md` file into `skills/` and the LLM can activate it on demand. See [`skills/README.md`](skills/README.md) for the full format and examples.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SKILLS_DIR` | `./skills` | Directory to scan for skills |
 
 ### General
 
