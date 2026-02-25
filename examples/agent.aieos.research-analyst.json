@@ -7,7 +7,7 @@
   "metadata": {
     "instance_id": "3b7e3cf5-research-4a5c-9c1d-5b62b2bb0d5a",
     "instance_version": "1.0",
-    "generator": "skiffboat",
+    "generator": "@dougley/skiff",
     "created_at": "2026-02-17",
     "last_updated": "2026-02-17"
   },

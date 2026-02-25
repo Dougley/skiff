@@ -26,8 +26,8 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 ## Quickstart
 
 ```sh
-git clone https://github.com/dougley/skiffboat.git
-cd skiffboat
+git clone https://github.com/dougley/skiff.git
+cd skiff
 pnpm install
 ```
 
