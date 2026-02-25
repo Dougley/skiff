@@ -1,10 +1,14 @@
 import * as path from "node:path";
+import type { MCPClient } from "@ai-sdk/mcp";
 import { tool } from "ai";
 import { z } from "zod";
 import { getSkill, getSkillCatalog } from "../skills/index.js";
 import { getMCPServers } from "./mcp.js";
 
-export function createSkillTools() {
+export function createSkillTools(
+  pendingSkillTools: Record<string, unknown>,
+  openClients: MCPClient[]
+) {
   return {
     list_skills: tool({
       description: "List available skills with their names and descriptions",
@@ -33,8 +37,16 @@ export function createSkillTools() {
           try {
             const configPath = path.join(skill.dir, "mcp.json");
             const clients = await getMCPServers(configPath);
+            openClients.push(...clients); // tracked for cleanup after the turn
             const toolSets = await Promise.all(clients.map((c) => c.tools()));
-            const toolNames = toolSets.flatMap((set) => Object.keys(set));
+            const toolNames: string[] = [];
+            for (const set of toolSets) {
+              for (const [toolName, tool] of Object.entries(set)) {
+                // store tools for the outer loop to inject into the active toolset
+                pendingSkillTools[toolName] = tool;
+                toolNames.push(toolName);
+              }
+            }
             if (toolNames.length > 0) {
               parts.push(
                 `\nThis skill provides the following tools: ${toolNames.join(", ")}`

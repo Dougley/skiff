@@ -73,7 +73,9 @@ export const createUserInputTools = (ctx: DiscordToolContext) => ({
     }),
     execute: async ({ questions }) => {
       if (!ctx.editStatusMessage) {
-        return { error: "Interactive questions are not available in this context." };
+        return {
+          error: "Interactive questions are not available in this context.",
+        };
       }
 
       const results: Array<{ question: string; answer: string }> = [];
@@ -161,10 +163,7 @@ async function askViaStatusMessage(
 
   const msg = await ctx.editStatusMessage({
     flags: MessageFlags.IsComponentsV2,
-    components: [
-      new TextDisplayBuilder().setContent(q.question),
-      row,
-    ],
+    components: [new TextDisplayBuilder().setContent(q.question), row],
   });
 
   if (!msg) {

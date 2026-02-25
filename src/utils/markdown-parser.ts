@@ -26,11 +26,56 @@ const MAX_TEXT_CHARS_PER_MESSAGE = 4000;
  * - Horizontal rules (---, ***, ___) become SeparatorBuilder
  * - Other markdown formatting is not currently supported and will be treated as plain text
  */
+// split markdown into paragraphs; code fences become their own segments
+function splitParagraphs(markdown: string): string[] {
+  const lines = markdown.split("\n");
+  const paragraphs: string[] = [];
+  let current: string[] = [];
+  let fence: string[] = [];
+  let inFence = false;
+
+  for (const line of lines) {
+    if (line.trimStart().startsWith("```")) {
+      if (!inFence) {
+        // flush preceding text paragraph before starting the fence
+        if (current.length > 0) {
+          paragraphs.push(current.join("\n"));
+          current = [];
+        }
+        inFence = true;
+        fence = [line];
+      } else {
+        // closing fence: emit the whole block as its own paragraph
+        fence.push(line);
+        paragraphs.push(fence.join("\n"));
+        fence = [];
+        inFence = false;
+      }
+      continue;
+    }
+
+    if (inFence) {
+      fence.push(line);
+    } else if (line.trim() === "") {
+      if (current.length > 0) {
+        paragraphs.push(current.join("\n"));
+        current = [];
+      }
+    } else {
+      current.push(line);
+    }
+  }
+
+  if (fence.length > 0) paragraphs.push(fence.join("\n")); // unclosed fence
+  if (current.length > 0) paragraphs.push(current.join("\n"));
+  return paragraphs;
+}
+
 export function markdownToDiscordComponents(
   markdown: string
 ): TopLevelComponent[] {
   const components: TopLevelComponent[] = [];
-  const paragraphs = markdown.split(/\n{2,}/);
+  const paragraphs = splitParagraphs(markdown);
 
   for (const paragraph of paragraphs) {
     const trimmed = paragraph.trim();

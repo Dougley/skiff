@@ -21,7 +21,13 @@ import {
   formatContextUsage,
   formatToolStatusMessage,
 } from "../utils/tool-status.js";
-import { chat as chatWithLLM, type ToolActivityEvent } from "./streaming.js";
+import { container } from "@sapphire/framework";
+import { formatSourceRef } from "../tools/sources.js";
+import {
+  chat as chatWithLLM,
+  ContextWindowFullError,
+  type ToolActivityEvent,
+} from "./streaming.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -76,6 +82,17 @@ export interface ConversationTurnResult {
 }
 
 const DEBOUNCE_MS = 800;
+
+// resolve /clear as a clickable Discord command mention, falling back to plain text
+function clearMention(guildId: string | null): string {
+  const cmd = container.stores.get("commands").get("clear");
+  if (!cmd) return "`/clear`";
+  const reg = cmd.applicationCommandRegistry;
+  const id =
+    (guildId && reg.guildIdToChatInputCommandIds.get(guildId)?.values().next().value) ??
+    reg.globalChatInputCommandIds.values().next().value;
+  return id ? `</clear:${id}>` : "`/clear`";
+}
 
 // ---------------------------------------------------------------------------
 // Main
@@ -149,19 +166,35 @@ export async function handleConversationTurn(
     },
   });
 
-  const result = await chatWithLLM({
-    messages: [
-      ...history.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content as string,
-      })),
-      { role: "user" as const, content: `${senderMeta}\n${content}` },
-    ],
-    userId,
-    toolContext,
-    messageContext,
-    onToolActivity,
-  });
+  let result: Awaited<ReturnType<typeof chatWithLLM>>;
+  try {
+    result = await chatWithLLM({
+      messages: [
+        ...history.map((m) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content as string,
+        })),
+        { role: "user" as const, content: `${senderMeta}\n${content}` },
+      ],
+      userId,
+      toolContext,
+      messageContext,
+      onToolActivity,
+    });
+  } catch (err) {
+    if (debounceTimer) clearTimeout(debounceTimer);
+    if (err instanceof ContextWindowFullError) {
+      const components = markdownToDiscordComponents(
+        `The conversation is too long for me to continue. Use ${clearMention(guildId)} to start a fresh conversation.`
+      );
+      return {
+        messages: splitComponentMessages(components),
+        usedTools: false,
+        historyLength: history.length + 1,
+      };
+    }
+    throw err;
+  }
 
   // Cancel any pending debounce so it doesn't fire after we send the response
   if (debounceTimer) clearTimeout(debounceTimer);
@@ -236,17 +269,24 @@ export async function handleConversationTurn(
   const components = markdownToDiscordComponents(result.text);
   const messages = splitComponentMessages(components);
 
-  // Append footer lines (tool summary + context warning) to the last chunk
-  const hasToolCalls = toolEvents.some((e) => e.type === "tool");
+  // Append footer (tool summary + sources + context warning) to the last chunk
+  // cite_sources is an internal tool — exclude it from the user-visible tool summary
+  const visibleToolEvents = toolEvents.filter(
+    (e) => e.type !== "tool" || e.toolName !== "cite_sources"
+  );
+  const hasToolCalls = visibleToolEvents.some((e) => e.type === "tool");
   const contextWarning = formatContextUsage(
     result.usage.inputTokens ?? 0,
     result.usage.outputTokens ?? 0
   );
   const last = messages[messages.length - 1];
-  if (last && (hasToolCalls || contextWarning)) {
+  if (last && (hasToolCalls || result.sources.length > 0 || contextWarning)) {
     const footerParts: string[] = [];
     if (hasToolCalls) {
-      footerParts.push(formatToolStatusMessage(toolEvents, true));
+      footerParts.push(formatToolStatusMessage(visibleToolEvents, true));
+    }
+    if (result.sources.length > 0) {
+      footerParts.push(result.sources.map(formatSourceRef).join("\n"));
     }
     if (contextWarning) {
       footerParts.push(contextWarning);

@@ -1,16 +1,33 @@
+import type { MCPClient } from "@ai-sdk/mcp";
 import type {
   AssistantModelMessage,
   ModelMessage,
   ToolModelMessage,
 } from "@ai-sdk/provider-utils";
 import { generateText, type LanguageModelUsage, stepCountIs } from "ai";
+import { env } from "../env/index.js";
 import { logger } from "../logger/index.js";
 import { fetchUserFacts } from "../memory/user-facts.js";
 import type { DiscordToolContext } from "../tools/discord.js";
+import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import type { MessageContext } from "./conversation-turn.js";
 import { llmProvider } from "./provider.js";
 import { getSystemPrompt } from "./system-prompt.js";
+
+// ---------------------------------------------------------------------------
+// Errors
+// ---------------------------------------------------------------------------
+
+// thrown when the conversation history is too long to safely call the LLM
+export class ContextWindowFullError extends Error {
+  constructor(estimatedTokens: number, contextWindowSize: number) {
+    super(
+      `estimated input tokens (${estimatedTokens}) near context window limit (${contextWindowSize})`
+    );
+    this.name = "ContextWindowFullError";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,6 +95,8 @@ export interface ChatResult {
   finishReason: string;
   /** Number of LLM steps taken (1 = no tool calls, >1 = tool round-trips). */
   stepCount: number;
+  /** Sources recorded via cite_sources during this turn. */
+  sources: SourceRef[];
 }
 
 // ---------------------------------------------------------------------------
@@ -85,6 +104,35 @@ export interface ChatResult {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_MAX_STEPS = 5;
+
+// block generation when estimated input tokens exceed this fraction of the context window
+const CONTEXT_BLOCK_THRESHOLD = 0.9;
+// rough token overhead for system prompt + user facts (not counted in message content)
+const SYSTEM_PROMPT_TOKEN_OVERHEAD = 3_000;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// rough token estimate from message content (chars / 3.5 + system prompt overhead)
+function estimateInputTokens(messages: ModelMessage[]): number {
+  let chars = 0;
+  for (const m of messages) {
+    const c = m.content;
+    if (typeof c === "string") {
+      chars += c.length;
+    } else if (Array.isArray(c)) {
+      for (const part of c) {
+        if ("text" in part && typeof part.text === "string") {
+          chars += part.text.length;
+        } else {
+          chars += JSON.stringify(part).length;
+        }
+      }
+    }
+  }
+  return Math.ceil(chars / 3.5) + SYSTEM_PROMPT_TOKEN_OVERHEAD;
+}
 
 // ---------------------------------------------------------------------------
 // Main chat loop
@@ -110,7 +158,16 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     abortSignal,
   } = ctx;
 
-  const tools = await createToolSet(toolContext);
+  // shared refs: activate_skill writes tools + clients here so we can
+  // inject them into the toolset and clean up processes after the turn
+  const pendingSkillTools: Record<string, unknown> = {};
+  const openSkillClients: MCPClient[] = [];
+  const collectedSources: SourceRef[] = [];
+  let tools = {
+    ...await createToolSet(toolContext, pendingSkillTools, openSkillClients),
+    ...createSourcesTools(collectedSources),
+  };
+
   const model = llmProvider;
   let userFacts: string[] = [];
   if (ctx.userId) {
@@ -135,78 +192,164 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     messageContext: ctx.messageContext,
   });
 
-  let stepCounter = 0;
-
   logger.debug("chat: starting turn", {
     messageCount: messages.length,
     maxSteps,
     model: String(model),
   });
 
-  const result = await generateText({
-    model,
-    system,
-    messages,
-    tools,
-    stopWhen: stepCountIs(maxSteps),
-    abortSignal,
+  // pre-flight: refuse before spending tokens if history is already near the limit
+  const estimated = estimateInputTokens(messages);
+  if (estimated >= env.CONTEXT_WINDOW_SIZE * CONTEXT_BLOCK_THRESHOLD) {
+    throw new ContextWindowFullError(estimated, env.CONTEXT_WINDOW_SIZE);
+  }
 
-    onStepFinish(stepResult) {
-      const currentStep = stepCounter++;
+  // manual agentic loop — lets us inject skill MCP tools between steps
+  let currentMessages = messages;
+  const allResponseMessages: ChatResponseMessage[] = [];
+  let totalUsage: LanguageModelUsage = {
+    inputTokens: 0,
+    inputTokenDetails: {
+      noCacheTokens: undefined,
+      cacheReadTokens: undefined,
+      cacheWriteTokens: undefined,
+    },
+    outputTokens: 0,
+    outputTokenDetails: {
+      textTokens: undefined,
+      reasoningTokens: undefined,
+    },
+    totalTokens: 0,
+  };
+  let finalText = "";
+  let finalFinishReason = "unknown";
+  let stepCounter = 0;
 
-      logger.debug("chat: step finished", {
-        step: currentStep,
-        finishReason: stepResult.finishReason,
-        textLength: stepResult.text.length,
-        toolCallCount: stepResult.toolCalls.length,
-        toolResultCount: stepResult.toolResults.length,
-        usage: stepResult.usage,
+  try {
+    while (stepCounter < maxSteps) {
+      // stopWhen: stepCountIs(1) = single LLM call per iteration, tools are auto-executed
+      const result = await generateText({
+        model,
+        system,
+        messages: currentMessages,
+        tools,
+        stopWhen: stepCountIs(1),
+        abortSignal,
       });
 
-      const reasoningTokens =
-        stepResult.usage.outputTokenDetails?.reasoningTokens;
-      if (reasoningTokens && reasoningTokens > 0) {
-        onToolActivity?.({
-          type: "reasoning",
-          stepNumber: currentStep,
-          tokens: reasoningTokens,
-        });
+      const newMessages = result.response.messages as ChatResponseMessage[];
+      allResponseMessages.push(...newMessages);
+      currentMessages = [...currentMessages, ...newMessages];
+
+      for (const step of result.steps) {
+        totalUsage = {
+          ...totalUsage,
+          inputTokens:
+            (totalUsage.inputTokens ?? 0) + (step.usage.inputTokens ?? 0),
+          outputTokens:
+            (totalUsage.outputTokens ?? 0) + (step.usage.outputTokens ?? 0),
+          totalTokens:
+            (totalUsage.totalTokens ?? 0) + (step.usage.totalTokens ?? 0),
+        };
       }
 
-      for (let i = 0; i < stepResult.toolCalls.length; i++) {
-        const call = stepResult.toolCalls[i];
-        const toolResult = stepResult.toolResults?.[i];
-        if (!call) continue;
-
-        logger.debug("chat: tool executed", {
-          step: currentStep,
-          toolName: call.toolName,
-          input: call.input,
-          output: toolResult?.output ?? null,
+      const step = result.steps[0];
+      if (step) {
+        logger.debug("chat: step finished", {
+          step: stepCounter,
+          finishReason: step.finishReason,
+          textLength: step.text.length,
+          toolCallCount: step.toolCalls.length,
+          toolResultCount: step.toolResults.length,
+          usage: step.usage,
         });
 
-        onToolActivity?.({
-          type: "tool",
-          stepNumber: currentStep,
-          toolName: call.toolName,
-          args: call.input,
-          output: toolResult?.output ?? null,
-        });
+        const reasoningTokens = step.usage.outputTokenDetails?.reasoningTokens;
+        if (reasoningTokens && reasoningTokens > 0) {
+          onToolActivity?.({
+            type: "reasoning",
+            stepNumber: stepCounter,
+            tokens: reasoningTokens,
+          });
+        }
+
+        for (let i = 0; i < step.toolCalls.length; i++) {
+          const call = step.toolCalls[i];
+          const toolResult = step.toolResults?.[i];
+          if (!call) continue;
+
+          logger.debug("chat: tool executed", {
+            step: stepCounter,
+            toolName: call.toolName,
+            input: call.input,
+            output: toolResult?.output ?? null,
+          });
+
+          onToolActivity?.({
+            type: "tool",
+            stepNumber: stepCounter,
+            toolName: call.toolName,
+            args: call.input,
+            output: toolResult?.output ?? null,
+          });
+        }
       }
-    },
-  });
+
+      finalText = result.text;
+      finalFinishReason = result.finishReason;
+      stepCounter++;
+
+      // context overflow — the model ran out of room mid-generation
+      if (result.finishReason === "length") {
+        throw new ContextWindowFullError(
+          totalUsage.inputTokens ?? 0,
+          env.CONTEXT_WINDOW_SIZE
+        );
+      }
+
+      if (result.finishReason !== "tool-calls") break; // model is done (text, error, etc.)
+
+      // inject any MCP tools loaded by activate_skill during this step
+      const pending = Object.keys(pendingSkillTools);
+      if (pending.length > 0) {
+        logger.debug("chat: injecting skill MCP tools", {
+          tools: pending,
+        });
+        tools = { ...tools, ...pendingSkillTools };
+        for (const key of pending) {
+          delete pendingSkillTools[key];
+        }
+      }
+    }
+  } finally {
+    // close any skill MCP servers that were started during this turn
+    await Promise.allSettled(
+      openSkillClients.map(async (c) => {
+        logger.debug("chat: closing skill MCP client", {
+          client: String(c),
+        });
+        return c.close().catch((err) => {
+          logger.warn("Failed to close skill MCP client", {
+            client: String(c),
+            err,
+          });
+        });
+      })
+    );
+  }
 
   logger.debug("chat: turn complete", {
-    steps: result.steps.length,
-    finishReason: result.finishReason,
-    usage: result.usage,
+    steps: stepCounter,
+    finishReason: finalFinishReason,
+    usage: totalUsage,
   });
 
   return {
-    text: result.text,
-    responseMessages: result.response.messages as ChatResponseMessage[],
-    usage: result.usage,
-    finishReason: result.finishReason,
-    stepCount: result.steps.length,
+    text: finalText,
+    responseMessages: allResponseMessages,
+    usage: totalUsage,
+    finishReason: finalFinishReason,
+    stepCount: stepCounter,
+    sources: collectedSources,
   };
 }

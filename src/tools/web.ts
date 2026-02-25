@@ -9,7 +9,10 @@ const braveRateLimit = {
   queue: Promise.resolve(),
 };
 
-async function throttledBraveFetch(url: string, init: RequestInit): Promise<Response> {
+async function throttledBraveFetch(
+  url: string,
+  init: RequestInit
+): Promise<Response> {
   braveRateLimit.queue = braveRateLimit.queue.then(async () => {
     const now = Date.now();
     const elapsed = now - braveRateLimit.lastRequestTime;

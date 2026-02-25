@@ -252,7 +252,11 @@ export const createShellTools = () => {
               end_offset !== undefined
                 ? Math.min(end_offset, lines.length)
                 : lines.length;
-            lines.splice(startLine, endLine - startLine, ...content.split("\n"));
+            lines.splice(
+              startLine,
+              endLine - startLine,
+              ...content.split("\n")
+            );
             await fs.writeFile(path, lines.join("\n"), "utf-8");
           } else {
             await fs.writeFile(path, content, "utf-8");

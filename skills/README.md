@@ -53,6 +53,9 @@ Write these as if you're briefing the LLM on how to handle the task.
 
 If your skill needs to provide tools to the LLM, add an `mcp.json` file in the skill directory. It uses the same format as the root `mcp.json`:
 
+> [!NOTE]
+> Avoid using `stdio` MCP servers in skills, currently Skiff has no way to cleanly shut them down. HTTP servers are recommended for skill tools.
+
 ```
 skills/
   my-skill/

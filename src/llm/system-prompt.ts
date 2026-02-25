@@ -51,7 +51,8 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
   parts.push(
     "\n## Tools",
     "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output. Only your final reply is shown.",
-    "The `send_message` tool sends to a different channel. Never use it for normal replies."
+    "The `send_message` tool sends to a different channel. Never use it for normal replies.",
+    "When your reply uses information from a web search or fetched URL, mark each inline citation with a superscript (¹ ² ³ ⁴ ⁵...) and call `cite_sources` with the matching index, URL, and a short title."
   );
 
   const skillCatalog = getSkillCatalog();
