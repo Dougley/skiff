@@ -82,7 +82,7 @@ export class MessagesListener extends Listener {
     try {
       const status: {
         message: Message | null;
-        pending: Promise<Message> | null;
+        pending: Promise<Message | null> | null;
       } = {
         message: null,
         pending: null,
@@ -152,7 +152,7 @@ export class MessagesListener extends Listener {
               })
               .catch((err) => {
                 logger.warn("Failed to send tool status", { err });
-                return null as unknown as Message;
+                return null;
               });
           }
         },

@@ -173,7 +173,7 @@ export function enqueueMemoryExtraction(input: MemoryExtractionInput): boolean {
     return false;
   }
 
-  const conversationId = input.conversationId ?? "unknown";
+  const conversationId = input.conversationId ?? crypto.randomUUID();
 
   const existing = pending.get(conversationId);
   let bufferedTurns: number;

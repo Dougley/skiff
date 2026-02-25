@@ -62,10 +62,13 @@ export const createWebTools = () => {
           },
         };
         let response = await throttledBraveFetch(url, init);
-        // Retry once on rate limit, respecting the reset header
+        // Retry once on rate limit, respecting the reset header.
+        // X-RateLimit-Reset is seconds-remaining and may be compound ("1, 2592000")
+        // so parse only the first (shortest) window to get the relevant delay.
         if (response.status === 429) {
           const reset = response.headers.get("X-RateLimit-Reset");
-          const delay = reset ? Math.min(Number(reset), 5) * 1000 : 2000;
+          const firstReset = reset ? Number(reset.split(",")[0]?.trim()) : NaN;
+          const delay = Number.isFinite(firstReset) ? Math.min(firstReset, 5) * 1000 : 2000;
           await new Promise((r) => setTimeout(r, delay));
           response = await throttledBraveFetch(url, init);
         }

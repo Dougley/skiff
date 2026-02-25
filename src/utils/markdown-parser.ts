@@ -11,7 +11,7 @@ export type TopLevelComponent =
   | SeparatorBuilder;
 
 const HR_REGEX = /^[-*_]{3,}$/;
-const IMAGE_LINK_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/g;
+const IMAGE_LINK_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/; // no 'g' flag — used only for .test()
 const VALID_MEDIA_URL_REGEX = /^https?:\/\//i;
 const MAX_GALLERY_ITEMS = 10;
 const MAX_COMPONENTS_PER_MESSAGE = 40;
@@ -92,14 +92,15 @@ export function markdownToDiscordComponents(
     }
 
     // Paragraph contains images — split into text chunks and image groups
-    IMAGE_LINK_REGEX.lastIndex = 0;
+    // fresh global instance each time so lastIndex never leaks between paragraphs
+    const imageRegex = new RegExp(IMAGE_LINK_REGEX.source, "g");
     let lastIndex = 0;
     let images: { url: string; alt: string }[] = [];
 
     for (
-      let match = IMAGE_LINK_REGEX.exec(trimmed);
+      let match = imageRegex.exec(trimmed);
       match !== null;
-      match = IMAGE_LINK_REGEX.exec(trimmed)
+      match = imageRegex.exec(trimmed)
     ) {
       const textBefore = trimmed.slice(lastIndex, match.index).trim();
       if (textBefore) {

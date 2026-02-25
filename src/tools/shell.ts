@@ -92,7 +92,7 @@ const DENIED_PATTERNS: Array<{ pattern: RegExp; reason: string }> = [
     reason: "Environment enumeration blocked",
   },
   {
-    pattern: /\b(^|\s)env\s*($|\s)/,
+    pattern: /(?:^|\s)env(?:\s|$)/,
     reason: "Environment enumeration blocked",
   },
   // Sensitive files

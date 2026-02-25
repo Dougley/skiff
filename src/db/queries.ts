@@ -45,7 +45,8 @@ export async function getOrCreateConversation(
     })
     .returning();
 
-  return created[0] as Conversation;
+  if (!created[0]) throw new Error("Failed to create conversation");
+  return created[0];
 }
 
 export type MessageInsert = {
@@ -75,7 +76,8 @@ export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
     .set({ updatedAt: new Date() })
     .where(eq(conversations.id, input.conversationId));
 
-  return inserted[0] as DBMessage;
+  if (!inserted[0]) throw new Error("Failed to insert message");
+  return inserted[0];
 }
 
 /**

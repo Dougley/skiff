@@ -1,6 +1,6 @@
 import type { Client } from "discord.js";
 import { MessageFlags } from "discord.js";
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, inArray, lte } from "drizzle-orm";
 import { db, type ScheduledTask, scheduledTasks } from "../db/index.js";
 import { handleConversationTurn } from "../llm/conversation-turn.js";
 import { logger } from "../logger/index.js";
@@ -34,25 +34,31 @@ export function stopScheduler(): void {
 
 async function tick(client: Client): Promise<void> {
   try {
-    // Atomically claim all due tasks by setting nextRunAt to a far-future
-    // sentinel. This prevents overlapping ticks from firing the same task.
-    // We snapshot the original nextRunAt before overwriting so we can
-    // anchor the next cron run from it (prevents schedule drift).
     const now = new Date();
-    const claimedTasks = await db
-      .update(scheduledTasks)
-      .set({ nextRunAt: CLAIM_SENTINEL })
+
+    // snapshot due tasks first — we need the original nextRunAt to anchor
+    // the next cron run (prevents drift). the sentinel is set in a second
+    // query keyed by id, so atomicity within a single process is preserved.
+    const dueTasks = await db
+      .select()
+      .from(scheduledTasks)
       .where(
         and(
           eq(scheduledTasks.enabled, true),
           lte(scheduledTasks.nextRunAt, now)
         )
-      )
-      .returning();
+      );
 
-    for (const task of claimedTasks) {
-      // task.nextRunAt is now the sentinel — pass the original scheduled time
-      await fireTask(client, task, now);
+    if (dueTasks.length === 0) return;
+
+    // claim all due tasks so overlapping ticks can't fire the same task
+    await db
+      .update(scheduledTasks)
+      .set({ nextRunAt: CLAIM_SENTINEL })
+      .where(inArray(scheduledTasks.id, dueTasks.map((t) => t.id)));
+
+    for (const task of dueTasks) {
+      await fireTask(client, task, task.nextRunAt); // original scheduled time
     }
   } catch (err) {
     logger.error("Scheduler tick error", { err });
