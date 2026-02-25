@@ -20,5 +20,12 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/agent.aieos.json ./
 COPY --from=build /app/mcp.json ./
+COPY --from=build /app/skills ./skills
+COPY --from=build /app/HEARTBEAT.md ./
 
-CMD ["dist/index.js"]
+# shell tools run in /home/skiff (SHELL_WORK_DIR), not the app CWD
+RUN groupadd --system skiff && useradd --system --gid skiff --create-home skiff
+
+USER skiff
+
+CMD ["node", "/app/dist/index.js"]

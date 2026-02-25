@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import "./discord/logger-bridge.js";
 
 import pkg from "../package.json" with { type: "json" };
