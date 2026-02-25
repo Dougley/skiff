@@ -15,13 +15,13 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 ## Features
 
 - **Multi-turn conversations** via `/ask`, `/clear`, and @mentions
-- **Long-term memory**, semantic search over past conversations, automatic user fact extraction, and topic knowledge
-- **Multiple LLM backends**, OpenAI, Anthropic, Ollama (or any OpenAI-compatible API)
-- **Embedded database**, PGlite with pgvector, no external PostgreSQL required
-- **Discord tools**, the LLM can look up server info, users, react to messages, and more
-- **MCP integration**, extend the bot's capabilities with external tool servers
-- **Skills**, on-demand extensibility: the LLM activates skills when relevant, keeping prompt overhead minimal
-- **Customizable personas**, define identity, psychology, speech patterns, and motivations via [AIEOS](https://aieos.org) files
+- **Long-term memory**, semantic search, automatic fact extraction, and topic knowledge
+- **Multiple LLM backends**, OpenAI, Anthropic, Ollama, or any OpenAI-compatible API
+- **Embedded database**, PGlite with pgvector, no external PostgreSQL needed
+- **Discord tools**, look up server info, users, react to messages, and more
+- **MCP integration**, extend capabilities with external tool servers
+- **Skills**, activated on demand with minimal prompt overhead
+- **Customizable personas**, define identity, psychology, and speech patterns via [AIEOS](https://aieos.org)
 
 ## Quickstart
 
@@ -56,7 +56,7 @@ This pulls `nomic-embed-text` for embeddings and uses Ollama as the embedding pr
 
 ## Configuration
 
-All config lives in environment variables. Only `DISCORD_BOT_TOKEN` is required, everything else has sane defaults.
+All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM provider's API key are strictly required to get started, but there are many options for customizing behavior, access control, tools, and more.
 
 ### LLM
 
@@ -160,6 +160,8 @@ Proactive monitoring — the bot periodically checks in on enabled channels.
 ### Skills
 
 Skills extend Skiff's capabilities without touching core code. Drop a directory with a `SKILL.md` file into `skills/` and the LLM can activate it on demand. See [`skills/README.md`](skills/README.md) for the full format and examples.
+
+Skills are able to define their own tools in the form of MCP tool servers. When a skill is activated, its tools become available to the agent for the duration of the conversation, and are automatically removed when the conversation ends.
 
 | Variable | Default | Description |
 |----------|---------|-------------|

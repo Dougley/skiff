@@ -1,5 +1,5 @@
-import { tool } from "ai";
 import * as path from "node:path";
+import { tool } from "ai";
 import { z } from "zod";
 import { getSkill, getSkillCatalog } from "../skills/index.js";
 import { getMCPServers } from "./mcp.js";
@@ -33,9 +33,7 @@ export function createSkillTools() {
           try {
             const configPath = path.join(skill.dir, "mcp.json");
             const clients = await getMCPServers(configPath);
-            const toolSets = await Promise.all(
-              clients.map((c) => c.tools())
-            );
+            const toolSets = await Promise.all(clients.map((c) => c.tools()));
             const toolNames = toolSets.flatMap((set) => Object.keys(set));
             if (toolNames.length > 0) {
               parts.push(

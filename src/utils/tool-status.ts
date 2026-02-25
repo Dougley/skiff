@@ -26,6 +26,8 @@ const TOOL_LABELS: Record<string, string> = {
   list_tasks: "Listing tasks",
   cancel_task: "Cancelling task",
   ask_questions: "Asking a question",
+  list_skills: "Listing skills",
+  activate_skill: "Activating skill",
 };
 
 /** Map tool names to their custom emoji. */
@@ -48,6 +50,8 @@ const TOOL_EMOJI: Record<string, string> = {
   list_tasks: EMOJI.robot,
   cancel_task: EMOJI.robot,
   ask_questions: EMOJI.discord,
+  list_skills: EMOJI.robot,
+  activate_skill: EMOJI.robot,
 };
 
 // ---------------------------------------------------------------------------
