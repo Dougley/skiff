@@ -17,15 +17,35 @@ const MAX_GALLERY_ITEMS = 10;
 const MAX_COMPONENTS_PER_MESSAGE = 40;
 const MAX_TEXT_CHARS_PER_MESSAGE = 4000;
 
-/**
- * Parses markdown into Discord Components V2 builders.
- *
- * - Text becomes TextDisplayBuilder
- * - Image links (![alt](url)) become MediaGalleryBuilder
- * - Images in the same paragraph are grouped into one gallery (max 10)
- * - Horizontal rules (---, ***, ___) become SeparatorBuilder
- * - Other markdown formatting is not currently supported and will be treated as plain text
- */
+// split a large code fence into multiple fence blocks, each within MAX_TEXT_CHARS_PER_MESSAGE
+function splitCodeFence(fenceLines: string[]): string[] {
+  const full = fenceLines.join("\n");
+  if (full.length <= MAX_TEXT_CHARS_PER_MESSAGE) return [full];
+  
+  const openLine = fenceLines[0];
+  const lastLine = fenceLines[fenceLines.length - 1] ?? "";
+  const isClosed = fenceLines.length > 1 && lastLine.trimStart().startsWith("```");
+  const closeLine = "```";
+  const bodyLines = isClosed ? fenceLines.slice(1, -1) : fenceLines.slice(1);
+  
+  const result: string[] = [];
+  let chunk: string[] = [];
+  
+  for (const line of bodyLines) {
+    chunk.push(line);
+    const candidate = [openLine, ...chunk, closeLine].join("\n");
+    if (candidate.length > MAX_TEXT_CHARS_PER_MESSAGE && chunk.length > 1) {
+      chunk.pop();
+      result.push([openLine, ...chunk, closeLine].join("\n"));
+      chunk = [line];
+    }
+  }
+  
+  const finalLines = isClosed ? [openLine, ...chunk, closeLine] : [openLine, ...chunk];
+  result.push(finalLines.join("\n"));
+  return result;
+}
+
 // split markdown into paragraphs; code fences become their own segments
 function splitParagraphs(markdown: string): string[] {
   const lines = markdown.split("\n");
@@ -33,9 +53,14 @@ function splitParagraphs(markdown: string): string[] {
   let current: string[] = [];
   let fence: string[] = [];
   let inFence = false;
+  let fenceTickCount = 0;
 
   for (const line of lines) {
-    if (line.trimStart().startsWith("```")) {
+    const stripped = line.trimStart();
+    const tickMatch = stripped.match(/^(`{3,})/);
+
+    if (tickMatch) {
+      const tickCount = tickMatch[0].length;
       if (!inFence) {
         // flush preceding text paragraph before starting the fence
         if (current.length > 0) {
@@ -43,15 +68,19 @@ function splitParagraphs(markdown: string): string[] {
           current = [];
         }
         inFence = true;
+        fenceTickCount = tickCount;
         fence = [line];
-      } else {
-        // closing fence: emit the whole block as its own paragraph
+        continue;
+      } else if (tickCount >= fenceTickCount && stripped.slice(tickCount).trim() === "") {
+        // closing fence: >= opener's backtick count, nothing after them
         fence.push(line);
-        paragraphs.push(fence.join("\n"));
+        for (const chunk of splitCodeFence(fence)) paragraphs.push(chunk);
         fence = [];
         inFence = false;
+        fenceTickCount = 0;
+        continue;
       }
-      continue;
+      // fewer backticks or has trailing content — treat as fence body
     }
 
     if (inFence) {
@@ -66,17 +95,26 @@ function splitParagraphs(markdown: string): string[] {
     }
   }
 
-  if (fence.length > 0) paragraphs.push(fence.join("\n")); // unclosed fence
+  if (fence.length > 0) for (const chunk of splitCodeFence(fence)) paragraphs.push(chunk); // unclosed fence
   if (current.length > 0) paragraphs.push(current.join("\n"));
   return paragraphs;
 }
 
+/**
+ * Parses markdown into Discord Components V2 builders.
+ *
+ * - Text becomes TextDisplayBuilder
+ * - Image links (![alt](url)) become MediaGalleryBuilder
+ * - Images in the same paragraph are grouped into one gallery (max 10)
+ * - Horizontal rules (---, ***, ___) become SeparatorBuilder
+ * - Other markdown formatting is not currently supported and will be treated as plain text
+ */
 export function markdownToDiscordComponents(
   markdown: string
 ): TopLevelComponent[] {
   const components: TopLevelComponent[] = [];
   const paragraphs = splitParagraphs(markdown);
-
+  
   for (const paragraph of paragraphs) {
     const trimmed = paragraph.trim();
     if (!trimmed) continue;
