@@ -32,9 +32,7 @@ export interface DiscordToolContext {
   ) => Promise<Message | null>;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// helpers
 
 const resolveGuild = (ctx: DiscordToolContext): Guild | null =>
   ctx.guildId ? (ctx.client.guilds.cache.get(ctx.guildId) ?? null) : null;
@@ -48,9 +46,7 @@ const formatMember = (m: GuildMember) => ({
   joinedAt: m.joinedAt?.toISOString() ?? null,
 });
 
-// ---------------------------------------------------------------------------
-// Tools
-// ---------------------------------------------------------------------------
+// tools
 
 export const createDiscordTools = (ctx: DiscordToolContext) => ({
   /**

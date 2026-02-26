@@ -11,13 +11,11 @@ import { fetchUserFacts } from "../memory/user-facts.js";
 import type { DiscordToolContext } from "../tools/discord.js";
 import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
-import type { MessageContext } from "./conversation-turn.js";
 import { llmProvider } from "./provider.js";
 import { getSystemPrompt } from "./system-prompt.js";
+import type { MessageContext } from "./types.js";
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
+// errors
 
 // thrown when the conversation history is too long to safely call the LLM
 export class ContextWindowFullError extends Error {
@@ -29,9 +27,7 @@ export class ContextWindowFullError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// types
 
 /** Fired once per tool call or reasoning step so the caller can surface progress in Discord. */
 export type ToolActivityEvent =
@@ -99,9 +95,7 @@ export interface ChatResult {
   sources: SourceRef[];
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
+// constants
 
 const DEFAULT_MAX_STEPS = 5;
 
@@ -110,9 +104,7 @@ const CONTEXT_BLOCK_THRESHOLD = 0.9;
 // rough token overhead for system prompt + user facts (not counted in message content)
 const SYSTEM_PROMPT_TOKEN_OVERHEAD = 3_000;
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// helpers
 
 // rough token estimate from message content (chars / 3.5 + system prompt overhead)
 function estimateInputTokens(messages: ModelMessage[]): number {
@@ -134,9 +126,7 @@ function estimateInputTokens(messages: ModelMessage[]): number {
   return Math.ceil(chars / 3.5) + SYSTEM_PROMPT_TOKEN_OVERHEAD;
 }
 
-// ---------------------------------------------------------------------------
-// Main chat loop
-// ---------------------------------------------------------------------------
+// main chat loop
 
 /**
  * Run a single conversational turn against the LLM.
@@ -164,7 +154,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   const openSkillClients: MCPClient[] = [];
   const collectedSources: SourceRef[] = [];
   let tools = {
-    ...await createToolSet(toolContext, pendingSkillTools, openSkillClients),
+    ...(await createToolSet(toolContext, pendingSkillTools, openSkillClients)),
     ...createSourcesTools(collectedSources),
   };
 

@@ -1,10 +1,8 @@
-import { EMOJI } from "../constants/emoji.js";
 import { env } from "../env/index.js";
 import type { ToolActivityEvent } from "../llm/streaming.js";
+import { EMOJI } from "./emoji.js";
 
-// ---------------------------------------------------------------------------
-// Tool metadata
-// ---------------------------------------------------------------------------
+// tool metadata
 
 /** Human-friendly display names for known tools. */
 const TOOL_LABELS: Record<string, string> = {
@@ -54,9 +52,7 @@ const TOOL_EMOJI: Record<string, string> = {
   activate_skill: EMOJI.robot,
 };
 
-// ---------------------------------------------------------------------------
-// Loading lines
-// ---------------------------------------------------------------------------
+// loading lines
 
 const LOADING_LINES = [
   "Thinking...",
@@ -104,9 +100,7 @@ const LOADING_LINES = [
   "Booping...",
 ];
 
-// ---------------------------------------------------------------------------
-// Formatting helpers
-// ---------------------------------------------------------------------------
+// formatting helpers
 
 /**
  * Build a single status line for a tool call.

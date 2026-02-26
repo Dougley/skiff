@@ -1,3 +1,4 @@
+import { container } from "@sapphire/framework";
 import {
   SeparatorBuilder,
   SeparatorSpacingSize,
@@ -12,40 +13,26 @@ import { logger } from "../logger/index.js";
 import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
-import type { TopLevelComponent } from "../utils/markdown-parser.js";
+import { formatSourceRef } from "../tools/sources.js";
 import {
   markdownToDiscordComponents,
   splitComponentMessages,
+  type TopLevelComponent,
 } from "../utils/markdown-parser.js";
 import {
   formatContextUsage,
   formatToolStatusMessage,
 } from "../utils/tool-status.js";
-import { container } from "@sapphire/framework";
-import { formatSourceRef } from "../tools/sources.js";
 import {
-  chat as chatWithLLM,
   ContextWindowFullError,
+  chat as chatWithLLM,
   type ToolActivityEvent,
 } from "./streaming.js";
+import type { MessageContext } from "./types.js";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
+// types
 
-/** Discord metadata about the incoming message, giving the LLM context. */
-export interface MessageContext {
-  /** The sender's display name (nickname or global name). */
-  displayName: string;
-  /** The sender's Discord username. */
-  username: string;
-  /** Human-readable channel name (e.g. "#general") or "DM". */
-  channelName: string;
-  /** Guild/server name, if applicable. */
-  guildName?: string | null;
-  /** Whether the message is a DM. */
-  isDM: boolean;
-}
+export type { MessageContext };
 
 export interface ConversationTurnParams {
   /** The user's input text. */
@@ -89,14 +76,13 @@ function clearMention(guildId: string | null): string {
   if (!cmd) return "`/clear`";
   const reg = cmd.applicationCommandRegistry;
   const id =
-    (guildId && reg.guildIdToChatInputCommandIds.get(guildId)?.values().next().value) ??
+    (guildId &&
+      reg.guildIdToChatInputCommandIds.get(guildId)?.values().next().value) ??
     reg.globalChatInputCommandIds.values().next().value;
   return id ? `</clear:${id}>` : "`/clear`";
 }
 
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
+// main
 
 /**
  * Run a full conversation turn: persist the user message, call the LLM

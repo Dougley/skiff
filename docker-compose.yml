@@ -13,7 +13,8 @@ services:
         condition: service_healthy
 
   bot:
-    build: .
+    # build: .
+    image: ghcr.io/dougley/skiff:latest
     restart: unless-stopped
     env_file: .env
     environment:

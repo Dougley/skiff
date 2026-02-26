@@ -1,9 +1,6 @@
-/**
- * Custom Discord emoji constants.
- *
- * Format: `<:name:id>` for static, `<a:name:id>` for animated.
- * These must belong to a guild the bot has access to.
- */
+// custom Discord emoji constants
+// format: `<:name:id>` for static, `<a:name:id>` for animated
+// these must belong to a guild the bot has access to
 export const EMOJI = {
   loading: "<a:loading:1472684150447411364>",
   floppy: "<:floppy:1472691254650470543>",
