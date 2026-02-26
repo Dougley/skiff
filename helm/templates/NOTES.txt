@@ -1,0 +1,21 @@
+Skiff is deploying.
+
+{{- if not .Values.secret.existingSecret }}
+{{- if not .Values.secret.DISCORD_BOT_TOKEN }}
+
+⚠  DISCORD_BOT_TOKEN is not set. The bot will not start.
+   Set it with --set secret.DISCORD_BOT_TOKEN=<token>
+   or use secret.existingSecret to reference a pre-created Secret.
+{{- end }}
+{{- end }}
+
+{{- if .Values.ollama.enabled }}
+
+Ollama is enabled. The bot will wait for the {{ .Values.ollama.model }} model
+to be pulled before starting (init container). First startup may take a while
+depending on your cluster's network speed and the model size.
+{{- else }}
+
+Using external LLM provider: {{ .Values.config.LLM_DEFAULT_PROVIDER }}
+Embeddings: {{ .Values.config.EMBEDDING_PROVIDER }}
+{{- end }}

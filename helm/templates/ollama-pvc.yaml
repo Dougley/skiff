@@ -1,0 +1,17 @@
+{{- if and .Values.ollama.enabled .Values.ollama.persistence.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "skiff.ollamaName" . }}-data
+  labels:
+    {{- include "skiff.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - {{ .Values.ollama.persistence.accessMode }}
+  resources:
+    requests:
+      storage: {{ .Values.ollama.persistence.size }}
+  {{- with .Values.ollama.persistence.storageClass }}
+  storageClassName: {{ . }}
+  {{- end }}
+{{- end }}

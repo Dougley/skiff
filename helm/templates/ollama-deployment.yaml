@@ -1,0 +1,44 @@
+{{- if .Values.ollama.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "skiff.ollamaName" . }}
+  labels:
+    {{- include "skiff.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skiff.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ollama
+  template:
+    metadata:
+      labels:
+        {{- include "skiff.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ollama
+    spec:
+      containers:
+        - name: ollama
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          ports:
+            - name: http
+              containerPort: 11434
+          readinessProbe:
+            exec:
+              command: ["ollama", "list"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          volumeMounts:
+            - name: ollama-data
+              mountPath: /root/.ollama
+      volumes:
+        - name: ollama-data
+          {{- if .Values.ollama.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "skiff.ollamaName" . }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+{{- end }}

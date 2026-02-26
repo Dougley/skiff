@@ -1,0 +1,18 @@
+{{- if .Values.ollama.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "skiff.ollamaName" . }}
+  labels:
+    {{- include "skiff.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "skiff.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ollama
+  ports:
+    - name: http
+      port: 11434
+      targetPort: http
+{{- end }}

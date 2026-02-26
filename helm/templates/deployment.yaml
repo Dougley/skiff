@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "skiff.fullname" . }}
+  labels:
+    {{- include "skiff.labels" . | nindent 4 }}
+spec:
+  # pglite is a local embedded db — must be single instance
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "skiff.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "skiff.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.ollama.enabled }}
+      # wait for ollama and pull the embedding model before starting the bot
+      initContainers:
+        - name: pull-model
+          image: "{{ .Values.ollama.image.repository }}:{{ .Values.ollama.image.tag }}"
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              until ollama list > /dev/null 2>&1; do
+                echo "waiting for ollama..."
+                sleep 3
+              done
+              echo "pulling {{ .Values.ollama.model }}"
+              ollama pull {{ .Values.ollama.model }}
+          env:
+            - name: OLLAMA_HOST
+              value: "http://{{ include "skiff.ollamaName" . }}:11434"
+      {{- end }}
+      containers:
+        - name: bot
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "skiff.fullname" . }}
+            - secretRef:
+                name: {{ include "skiff.secretName" . }}
+          {{- if .Values.ollama.enabled }}
+          # override embedding config to use the local ollama service
+          env:
+            - name: EMBEDDING_PROVIDER
+              value: ollama
+            - name: EMBEDDING_MODEL
+              value: {{ .Values.ollama.model | quote }}
+            - name: OLLAMA_BASE_URL
+              value: "http://{{ include "skiff.ollamaName" . }}:11434"
+          {{- end }}
+          volumeMounts:
+            - name: pg-data
+              mountPath: /app/pg_data
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: pg-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "skiff.fullname" . }}-pg-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}

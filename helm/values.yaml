@@ -1,0 +1,78 @@
+image:
+  repository: ghcr.io/dougley/skiff
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# persistent volume for the embedded pglite database
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+# sensitive env vars — stored in a Secret
+# use existingSecret to reference a pre-created secret instead of putting
+# values here (recommended for production / gitops workflows)
+secret:
+  existingSecret: ""
+  DISCORD_BOT_TOKEN: ""
+  OPENAI_API_KEY: ""
+  ANTHROPIC_API_KEY: ""
+  BRAVE_SEARCH_API_KEY: ""
+  OLLAMA_API_KEY: ""
+
+# non-sensitive env vars — stored in a ConfigMap
+config:
+  LOG_LEVEL: info
+  NODE_ENV: production
+  LLM_DEFAULT_MODEL: gpt-4o-mini
+  LLM_DEFAULT_PROVIDER: openai
+  EMBEDDING_PROVIDER: openai
+  EMBEDDING_MODEL: text-embedding-3-small
+  # set to "disabled" to turn off memory extraction
+  MEMORY_EXTRACT_MODEL: ""
+  CONTEXT_WINDOW_SIZE: "128000"
+  RAG_TOP_K: "5"
+  RAG_RECENT_LIMIT: "12"
+  RAG_MIN_SIMILARITY: "0.3"
+  SHELL_ENABLED: "false"
+  SHELL_WORK_DIR: /home/skiff
+  SHELL_ALLOWED_DIRS: /tmp
+  HEARTBEAT_ENABLED: "true"
+  HEARTBEAT_INTERVAL_MINUTES: "30"
+  HEARTBEAT_QUIET_HOURS_START: "23:00"
+  HEARTBEAT_QUIET_HOURS_END: "08:00"
+  HEARTBEAT_TIMEZONE: UTC
+  HEARTBEAT_ACK_MAX_CHARS: "300"
+  ACCESS_POLICY: open
+  ACCESS_DM_POLICY: open
+  ACCESS_ALLOWED_GUILDS: ""
+  ACCESS_ALLOWED_CHANNELS: ""
+  ACCESS_ALLOWED_USERS: ""
+  TOOL_CHANNEL_RULES: ""
+  TOOL_GUILD_RULES: ""
+  TOOL_DM_RULES: ""
+  TOOL_USER_RULES: ""
+  SKILLS_DIR: ./skills
+  MCP_CONFIG_PATH: mcp.json
+  AIEOS_FILE: ./agent.aieos.json
+
+# optional ollama sidecar for local embeddings
+# when enabled, EMBEDDING_PROVIDER and EMBEDDING_MODEL are overridden to
+# point at the local ollama service
+ollama:
+  enabled: false
+  model: nomic-embed-text
+  image:
+    repository: ollama/ollama
+    tag: latest
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""
+    accessMode: ReadWriteOnce
+
+resources: {}
+
+nameOverride: ""
+fullnameOverride: ""
