@@ -111,9 +111,7 @@ export async function extractMemory(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Conversation-idle debounce
-// ---------------------------------------------------------------------------
+// conversation-idle debounce
 
 /** How long to wait after the last message before running extraction. */
 const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-// --- Sub-schemas ---
+// sub-schemas
 
 const skillSchema = z.object({
   name: z.string(),
@@ -110,7 +110,7 @@ const keyLifeEventSchema = z.object({
   impact: z.string(),
 });
 
-// --- Top-level section schemas ---
+// top-level section schemas
 
 const metadataSchema = z.object({
   instance_id: z.string(),
@@ -274,7 +274,7 @@ const motivationsSchema = z.object({
   }),
 });
 
-// --- Root AIEOS schema ---
+// root AIEOS schema
 
 export const aieosSchema = z.object({
   standard: z.object({

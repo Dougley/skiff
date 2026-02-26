@@ -13,9 +13,7 @@ import {
 
 export const EMBEDDING_DIMENSIONS = 1536;
 
-// ---------------------------------------------------------------------------
-// Conversations — one per Discord channel/thread
-// ---------------------------------------------------------------------------
+// conversations — one per discord channel/thread
 export const conversations = pgTable(
   "conversations",
   {
@@ -30,9 +28,7 @@ export const conversations = pgTable(
   (t) => [index("idx_conversations_channel").on(t.channelId)]
 );
 
-// ---------------------------------------------------------------------------
-// Messages — ordered history within a conversation
-// ---------------------------------------------------------------------------
+// messages — ordered history within a conversation
 export const messages = pgTable(
   "messages",
   {
@@ -53,9 +49,7 @@ export const messages = pgTable(
   ]
 );
 
-// ---------------------------------------------------------------------------
-// User facts — extracted preferences and information about users
-// ---------------------------------------------------------------------------
+// user facts — extracted preferences and information about users
 export const userFacts = pgTable(
   "user_facts",
   {
@@ -81,9 +75,7 @@ export const userFacts = pgTable(
   ]
 );
 
-// ---------------------------------------------------------------------------
-// Message embeddings — for RAG retrieval
-// ---------------------------------------------------------------------------
+// message embeddings — for RAG retrieval
 export const messageEmbeddings = pgTable(
   "message_embeddings",
   {
@@ -108,9 +100,7 @@ export const messageEmbeddings = pgTable(
   ]
 );
 
-// ---------------------------------------------------------------------------
-// Topic knowledge — structured knowledge about subjects discussed
-// ---------------------------------------------------------------------------
+// topic knowledge — structured knowledge about subjects discussed
 export const topicKnowledge = pgTable(
   "topic_knowledge",
   {
@@ -135,9 +125,7 @@ export const topicKnowledge = pgTable(
   ]
 );
 
-// ---------------------------------------------------------------------------
-// Scheduled tasks — one-shot reminders and recurring cron jobs
-// ---------------------------------------------------------------------------
+// scheduled tasks — one-shot reminders and recurring cron jobs
 export const scheduledTasks = pgTable(
   "scheduled_tasks",
   {

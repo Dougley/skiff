@@ -17,9 +17,7 @@ const SELECT_TIMEOUT_MS = 5 * 60 * 1000;
 // TODO: re-enable when allow_other is cleaned up
 // const OTHER_VALUE = "__other__";
 
-// ---------------------------------------------------------------------------
-// Tool factories
-// ---------------------------------------------------------------------------
+// tool factories
 
 export const createUserInputTools = (ctx: DiscordToolContext) => ({
   ask_questions: tool({
@@ -111,9 +109,7 @@ export const createUserInputTools = (ctx: DiscordToolContext) => ({
   }),
 });
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+// helpers
 
 interface QuestionInput {
   question: string;

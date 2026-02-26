@@ -104,11 +104,11 @@ export async function handleConversationTurn(
     skipInitialStatus,
   } = params;
 
-  // --- Conversation & history ---
+  // conversation & history
   const conversation = await getOrCreateConversation({ channelId, guildId });
   const history = await getRecentMessages(conversation.id);
 
-  // --- Persist user message ---
+  // persist user message
   const userMsg = await insertMessage({
     conversationId: conversation.id,
     role: "user",
@@ -124,7 +124,7 @@ export async function handleConversationTurn(
     content,
   });
 
-  // --- LLM call with debounced tool status ---
+  // LLM call with debounced tool status
   const toolEvents: ToolActivityEvent[] = [];
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -185,7 +185,7 @@ export async function handleConversationTurn(
   // Cancel any pending debounce so it doesn't fire after we send the response
   if (debounceTimer) clearTimeout(debounceTimer);
 
-  // --- Persist all response messages (assistant tool-calls + tool results + final text) ---
+  // persist all response messages (assistant tool-calls + tool results + final text)
   let assistantMsg: Awaited<ReturnType<typeof insertMessage>> | undefined;
 
   for (const msg of result.responseMessages) {
@@ -251,7 +251,7 @@ export async function handleConversationTurn(
     sourceMessageId: assistantMsg.id,
   });
 
-  // --- Build response components & split into message-sized chunks ---
+  // build response components & split into message-sized chunks
   const components = markdownToDiscordComponents(result.text);
   const messages = splitComponentMessages(components);
 

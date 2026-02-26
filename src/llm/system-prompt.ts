@@ -19,7 +19,7 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
 
   const userFacts = options?.userFacts ?? [];
 
-  // --- Build prompt: persona first, everything else supports it ---
+  // build prompt: persona first, everything else supports it
   const parts = [
     persona,
 
