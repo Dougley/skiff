@@ -8,7 +8,7 @@ RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY . .
 
-RUN pnpm build && pnpm prune --prod
+RUN pnpm build
 
 FROM node:24-slim
 
