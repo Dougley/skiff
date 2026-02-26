@@ -1,3 +1,4 @@
+import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
 import {
   boolean,
   index,
@@ -38,8 +39,8 @@ export const messages = pgTable(
       .references(() => conversations.id, { onDelete: "cascade" }),
     role: text("role").notNull(), // user | assistant | tool
     content: text("content"),
-    toolCalls: jsonb("tool_calls"), // stored for assistant messages with tool use
-    toolResults: jsonb("tool_results"), // stored for tool result messages
+    toolCalls: jsonb("tool_calls").$type<ToolCallPart[]>(), // assistant tool-call parts
+    toolResults: jsonb("tool_results").$type<ToolContent>(), // tool result parts
     userId: text("user_id"), // Discord user ID (for user messages)
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

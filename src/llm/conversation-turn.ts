@@ -1,3 +1,4 @@
+import type { ModelMessage } from "@ai-sdk/provider-utils";
 import { container } from "@sapphire/framework";
 import {
   SeparatorBuilder,
@@ -82,14 +83,33 @@ function clearMention(guildId: string | null): string {
   return id ? `</clear:${id}>` : "`/clear`";
 }
 
+// helpers
+
+// reconstruct AI SDK ModelMessage[] from DB rows, preserving tool call/result structure
+function historyToMessages(
+  history: Awaited<ReturnType<typeof getRecentMessages>>
+): ModelMessage[] {
+  return history.map((m): ModelMessage => {
+    if (m.role === "tool") {
+      return { role: "tool", content: m.toolResults ?? [] };
+    }
+    if (m.toolCalls) {
+      const parts: Exclude<
+        Extract<ModelMessage, { role: "assistant" }>["content"],
+        string
+      > = [];
+      if (m.content) parts.push({ type: "text", text: m.content });
+      for (const tc of m.toolCalls) parts.push(tc);
+      return { role: "assistant", content: parts };
+    }
+    return { role: m.role as "user" | "assistant", content: m.content ?? "" };
+  });
+}
+
 // main
 
-/**
- * Run a full conversation turn: persist the user message, call the LLM
- * (with debounced tool-status callbacks), persist the assistant reply,
- * enqueue embedding + memory extraction, and return the final Discord
- * components ready to send.
- */
+// run a full conversation turn: persist user message, call LLM, persist reply,
+// enqueue embedding + memory extraction, return final Discord components
 export async function handleConversationTurn(
   params: ConversationTurnParams
 ): Promise<ConversationTurnResult> {
@@ -156,10 +176,7 @@ export async function handleConversationTurn(
   try {
     result = await chatWithLLM({
       messages: [
-        ...history.map((m) => ({
-          role: m.role as "user" | "assistant",
-          content: m.content as string,
-        })),
+        ...historyToMessages(history),
         { role: "user" as const, content: `${senderMeta}\n${content}` },
       ],
       userId,

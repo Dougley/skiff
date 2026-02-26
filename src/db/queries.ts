@@ -1,4 +1,5 @@
-import { and, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
+import { and, desc, eq, isNotNull, or } from "drizzle-orm";
 import { env } from "../env/index.js";
 import { conversations, db, heartbeatChannels, messages } from "./index.js";
 import type { Conversation, DBMessage } from "./schema.js";
@@ -54,8 +55,8 @@ export type MessageInsert = {
   role: string;
   content: string | null;
   userId?: string | null;
-  toolCalls?: unknown;
-  toolResults?: unknown;
+  toolCalls?: ToolCallPart[] | null;
+  toolResults?: ToolContent | null;
 };
 
 export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
@@ -80,30 +81,36 @@ export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
   return inserted[0];
 }
 
-/**
- * Fetch recent messages for a conversation, ordered oldest-first
- * so they can be passed directly as LLM history.
- * Only returns user/assistant messages with content (skips tool messages).
- */
+// fetch recent messages for a conversation, ordered oldest-first
+// includes user/assistant text, assistant tool calls, and tool results
 export async function getRecentMessages(
   conversationId: string,
   limit?: number
-): Promise<Pick<DBMessage, "role" | "content">[]> {
+): Promise<
+  Pick<DBMessage, "role" | "content" | "toolCalls" | "toolResults">[]
+> {
   const rows = await db
-    .select({ role: messages.role, content: messages.content })
+    .select({
+      role: messages.role,
+      content: messages.content,
+      toolCalls: messages.toolCalls,
+      toolResults: messages.toolResults,
+    })
     .from(messages)
     .where(
       and(
         eq(messages.conversationId, conversationId),
-        isNotNull(messages.content),
-        inArray(messages.role, ["user", "assistant"])
+        or(
+          isNotNull(messages.content),
+          isNotNull(messages.toolCalls),
+          isNotNull(messages.toolResults)
+        )
       )
     )
     .orderBy(desc(messages.createdAt))
     .limit(limit ?? env.RAG_RECENT_LIMIT);
 
-  // Reverse so oldest messages come first
-  return rows.reverse() as Pick<DBMessage, "role" | "content">[];
+  return rows.reverse();
 }
 
 /**
