@@ -1,0 +1,100 @@
+FROM rust AS mdrs-build
+
+RUN cargo install --git https://github.com/NicKoehler/mediafire_rs --locked
+
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml ./
+
+RUN corepack enable && pnpm install --frozen-lockfile
+
+COPY . .
+
+RUN pnpm build
+
+FROM node:24-slim
+
+WORKDIR /app
+
+# TARGETARCH is automatically injected by BuildKit for multi-platform builds
+ARG TARGETARCH
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # network, download, and archive tools — foundation for everything else
+    ca-certificates \
+    curl \
+    wget \
+    aria2 \
+    unzip \
+    zip \
+    p7zip-full \
+    xz-utils \
+    cadaver \
+    bzip2 \
+    # shell utilities — search, data, filesystem, build, and dev tools
+    git \
+    jq \
+    ripgrep \
+    fd-find \
+    sqlite3 \
+    rsync \
+    openssh-client \
+    file \
+    tree \
+    pv \
+    bc \
+    procps \
+    nano \
+    make \
+    build-essential \
+    # media and document processing
+    ffmpeg \
+    imagemagick \
+    pandoc \
+    && rm -rf /var/lib/apt/lists/*
+
+# rclone — official install script handles both amd64 and arm64
+RUN curl -fsSL https://rclone.org/install.sh | bash
+
+# MEGAcmd — direct .deb download, available for both amd64 and arm64
+RUN curl -fsSL "https://mega.nz/linux/repo/Debian_12/${TARGETARCH}/megacmd-Debian_12_${TARGETARCH}.deb" -o /tmp/megacmd.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends /tmp/megacmd.deb && \
+    rm /tmp/megacmd.deb && \
+    rm -rf /var/lib/apt/lists/*
+
+# yt-dlp — video downloader; arm64 uses aarch64 suffix, amd64 has none
+RUN if [ "${TARGETARCH}" = "arm64" ]; then SUFFIX="_aarch64"; else SUFFIX=""; fi && \
+    curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux${SUFFIX}" -o /usr/local/bin/yt-dlp && \
+    chmod +x /usr/local/bin/yt-dlp
+
+# yq — YAML/JSON processor; naming matches Docker's TARGETARCH (amd64/arm64)
+RUN curl -fsSL "https://github.com/mikefarah/yq/releases/latest/download/yq_linux_${TARGETARCH}" -o /usr/local/bin/yq && \
+    chmod +x /usr/local/bin/yq
+
+# uv - python toolchain and venv manager
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+
+# pre-warm Python 3.13 into a venv; PATH makes python/pip available without activation
+ENV UV_PYTHON_INSTALL_DIR=/usr/local/share/uv/python
+RUN uv venv /app/.venv --python 3.13 && uv cache clean
+ENV PATH="/app/.venv/bin:$PATH"
+
+# mdrs (mediafire_rs) — compiled from source, works on all platforms
+COPY --from=mdrs-build /usr/local/cargo/bin/mdrs /usr/local/bin/mdrs
+
+COPY --from=build /app/package.json ./
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/drizzle ./drizzle
+COPY --from=build /app/agent.aieos.json ./
+COPY --from=build /app/mcp.json ./
+COPY --from=build /app/skills ./skills
+COPY --from=build /app/HEARTBEAT.md ./
+
+# shell tools run in /home/skiff (SHELL_WORK_DIR), not the app CWD
+RUN groupadd --system skiff && useradd --system --gid skiff --create-home skiff
+
+CMD ["node", "/app/dist/index.js"]
