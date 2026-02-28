@@ -472,14 +472,11 @@ export const createShellTools = () => {
           backgrounded: true,
           jobId,
           message: `Command is still running after ${BACKGROUND_AFTER_MS}ms. Use shell_job_status with job ID "${jobId}" to check on it.`,
-          hint: "For long-running commands, consider using the schedule_task tool to check on it later instead of polling with shell_job_status.",
         };
       },
     }),
     shell_job_status: tool({
-      description:
-        "Check the status of a backgrounded shell command. " +
-        'Poll until status is "done" or "terminated" to get the final output.',
+      description: "Check the status of a backgrounded shell command.",
       inputSchema: z.object({
         job_id: z.string().describe("The job ID returned by shell_exec."),
       }),
@@ -490,6 +487,7 @@ export const createShellTools = () => {
         if (job.status === "running") {
           const { stdout, stderr } = job.handle.getBuffers();
           return {
+            hint: "For long-running commands, consider using the schedule_task tool to check on it later instead of polling with shell_job_status.",
             status: "running",
             stdout: truncate(stdout, MAX_OUTPUT_LENGTH).text,
             stderr: truncate(stderr, MAX_OUTPUT_LENGTH).text,

@@ -53,7 +53,7 @@ export const environmentVariableSchema = z.object({
     .transform((v) => v === "true"),
   SHELL_WORK_DIR: z.string().default("/home/skiff"),
   SHELL_ALLOWED_DIRS: z.string().default("/tmp"),
-  CONTEXT_WINDOW_SIZE: z.coerce.number().int().min(1).default(128_000),
+  CONTEXT_WINDOW_SIZE: z.coerce.number().int().min(1).default(200_000),
   HEARTBEAT_ENABLED: z
     .enum(["true", "false"])
     .default("true")

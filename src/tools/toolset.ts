@@ -1,3 +1,4 @@
+import type { MCPClient } from "@ai-sdk/mcp";
 import { getAccessConfig, getDisabledToolGroups } from "../access/guard.js";
 import { env } from "../env/index.js";
 import { createAIEOSTools } from "./aieos.js";
@@ -7,7 +8,6 @@ import { createToolset as createMCPToolset } from "./mcp.js";
 import { createMemoryTools } from "./memory.js";
 import { createSchedulerTools } from "./scheduler.js";
 import { createShellTools } from "./shell.js";
-import type { MCPClient } from "@ai-sdk/mcp";
 import { createSkillTools } from "./skills.js";
 import { createTopicTools } from "./topic.js";
 import { createUserInputTools } from "./user-input.js";
@@ -44,6 +44,8 @@ export async function createToolSet(
     ...(env.SHELL_ENABLED && !disabled.has("shell") ? createShellTools() : {}),
     ...(!disabled.has("mcp") ? await createMCPToolset() : {}),
     ...(!disabled.has("user-input") ? createUserInputTools(ctx) : {}),
-    ...(!disabled.has("skills") ? createSkillTools(pendingSkillTools, openClients) : {}),
+    ...(!disabled.has("skills")
+      ? createSkillTools(pendingSkillTools, openClients)
+      : {}),
   };
 }

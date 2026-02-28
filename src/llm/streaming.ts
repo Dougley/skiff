@@ -87,6 +87,8 @@ export interface ChatResult {
   responseMessages: ChatResponseMessage[];
   /** Token usage for the entire turn (summed across all steps). */
   usage: LanguageModelUsage;
+  /** Input tokens sent in the final LLM step — the true context window pressure. */
+  lastInputTokens: number;
   /** Why the model stopped generating. */
   finishReason: string;
   /** Number of LLM steps taken (1 = no tool calls, >1 = tool round-trips). */
@@ -214,6 +216,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   let finalText = "";
   let finalFinishReason = "unknown";
   let stepCounter = 0;
+  let lastInputTokens = 0;
 
   try {
     while (stepCounter < maxSteps) {
@@ -241,6 +244,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
           totalTokens:
             (totalUsage.totalTokens ?? 0) + (step.usage.totalTokens ?? 0),
         };
+        lastInputTokens = step.usage.inputTokens ?? lastInputTokens;
       }
 
       const step = result.steps[0];
@@ -338,6 +342,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     text: finalText,
     responseMessages: allResponseMessages,
     usage: totalUsage,
+    lastInputTokens,
     finishReason: finalFinishReason,
     stepCount: stepCounter,
     sources: collectedSources,

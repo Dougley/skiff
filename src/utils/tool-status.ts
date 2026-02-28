@@ -26,6 +26,7 @@ const TOOL_LABELS: Record<string, string> = {
   ask_questions: "Asking a question",
   list_skills: "Listing skills",
   activate_skill: "Activating skill",
+  shell_job_status: "Checking command status",
 };
 
 /** Map tool names to their custom emoji. */
@@ -50,6 +51,7 @@ const TOOL_EMOJI: Record<string, string> = {
   ask_questions: EMOJI.discord,
   list_skills: EMOJI.robot,
   activate_skill: EMOJI.robot,
+  shell_job_status: EMOJI.prompt,
 };
 
 // loading lines
@@ -142,19 +144,29 @@ function isStatusOutput(output: unknown): output is { status: string } {
   );
 }
 
+// collapse the live tree view after this many events to keep the status compact
+const COLLAPSE_THRESHOLD = 5;
+// how many recent tool calls to show when collapsed
+const COLLAPSE_TAIL = 2;
+
 /**
  * Build the full intermediary status text from all tool calls so far.
  * Each event gets its own line with a tree prefix, emoji, and label.
+ * Once over COLLAPSE_THRESHOLD, older events fold into a count line and
+ * only the most recent COLLAPSE_TAIL calls are shown.
  */
 export function formatToolStatusMessage(
   events: ToolActivityEvent[],
   done: boolean
 ): string {
-  if (events.length === 0) return `-# ${EMOJI.loading} ${randomLoadingLine()}`;
+  // reasoning events are internal — only show tool calls to the user
+  const toolEvents = events.filter((e) => e.type === "tool");
+
+  if (toolEvents.length === 0)
+    return `-# ${EMOJI.loading} ${randomLoadingLine()}`;
 
   if (done) {
-    // Collapsed single-line summary for completed turns
-    const toolEvents = events.filter((e) => e.type === "tool");
+    // collapsed single-line summary for completed turns
     const usedWebSearch = toolEvents.some((e) => e.toolName === "web_search");
     const count = toolEvents.length;
     let summary = `-# ${EMOJI.tool} Used ${count} tool${count === 1 ? "" : "s"}`;
@@ -164,13 +176,24 @@ export function formatToolStatusMessage(
     return summary;
   }
 
-  const lines = events.map((e, i) => {
+  // show only recent tail when collapsed, folding older events into a count line
+  if (toolEvents.length > COLLAPSE_THRESHOLD) {
+    const tail = toolEvents.slice(-COLLAPSE_TAIL);
+    const hiddenCount = toolEvents.length - COLLAPSE_TAIL;
+    const lines = [
+      `-# ╭ ··· ${hiddenCount} earlier`,
+      ...tail.map((e) => `-# ├ ${formatEventLine(e)}`),
+      `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`,
+    ];
+    return lines.join("\n");
+  }
+
+  const lines = toolEvents.map((e, i) => {
     const prefix = i === 0 ? "╭" : "├";
     return `-# ${prefix} ${formatEventLine(e)}`;
   });
 
-  const tailPrefix = events.length === 0 ? "╶" : "╰";
-  lines.push(`-# ${tailPrefix} ${EMOJI.loading} ${randomLoadingLine()}`);
+  lines.push(`-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`);
 
   return lines.join("\n");
 }
@@ -182,18 +205,14 @@ const CONTEXT_WARNING_THRESHOLD = 0.75;
  * Only returns a string when usage exceeds 75% of the context window.
  * Returns null otherwise — callers should skip rendering when null.
  */
-export function formatContextUsage(
-  promptTokens: number,
-  completionTokens: number
-): string | null {
-  const totalUsed = promptTokens + completionTokens;
+export function formatContextUsage(inputTokens: number): string | null {
   const contextSize = env.CONTEXT_WINDOW_SIZE;
-  const ratio = totalUsed / contextSize;
+  const ratio = inputTokens / contextSize;
 
   if (ratio < CONTEXT_WARNING_THRESHOLD) return null;
 
   const pct = Math.round(ratio * 100);
-  const used = totalUsed.toLocaleString();
+  const used = inputTokens.toLocaleString();
   const max = contextSize.toLocaleString();
 
   if (ratio >= 0.95) {

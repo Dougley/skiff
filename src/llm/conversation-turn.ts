@@ -278,10 +278,7 @@ export async function handleConversationTurn(
     (e) => e.type !== "tool" || e.toolName !== "cite_sources"
   );
   const hasToolCalls = visibleToolEvents.some((e) => e.type === "tool");
-  const contextWarning = formatContextUsage(
-    result.usage.inputTokens ?? 0,
-    result.usage.outputTokens ?? 0
-  );
+  const contextWarning = formatContextUsage(result.lastInputTokens);
   const last = messages[messages.length - 1];
   if (last && (hasToolCalls || result.sources.length > 0 || contextWarning)) {
     const footerParts: string[] = [];

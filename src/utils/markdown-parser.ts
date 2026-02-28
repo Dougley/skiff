@@ -21,16 +21,17 @@ const MAX_TEXT_CHARS_PER_MESSAGE = 4000;
 function splitCodeFence(fenceLines: string[]): string[] {
   const full = fenceLines.join("\n");
   if (full.length <= MAX_TEXT_CHARS_PER_MESSAGE) return [full];
-  
+
   const openLine = fenceLines[0];
   const lastLine = fenceLines[fenceLines.length - 1] ?? "";
-  const isClosed = fenceLines.length > 1 && lastLine.trimStart().startsWith("```");
+  const isClosed =
+    fenceLines.length > 1 && lastLine.trimStart().startsWith("```");
   const closeLine = "```";
   const bodyLines = isClosed ? fenceLines.slice(1, -1) : fenceLines.slice(1);
-  
+
   const result: string[] = [];
   let chunk: string[] = [];
-  
+
   for (const line of bodyLines) {
     chunk.push(line);
     const candidate = [openLine, ...chunk, closeLine].join("\n");
@@ -40,8 +41,10 @@ function splitCodeFence(fenceLines: string[]): string[] {
       chunk = [line];
     }
   }
-  
-  const finalLines = isClosed ? [openLine, ...chunk, closeLine] : [openLine, ...chunk];
+
+  const finalLines = isClosed
+    ? [openLine, ...chunk, closeLine]
+    : [openLine, ...chunk];
   result.push(finalLines.join("\n"));
   return result;
 }
@@ -71,7 +74,10 @@ function splitParagraphs(markdown: string): string[] {
         fenceTickCount = tickCount;
         fence = [line];
         continue;
-      } else if (tickCount >= fenceTickCount && stripped.slice(tickCount).trim() === "") {
+      } else if (
+        tickCount >= fenceTickCount &&
+        stripped.slice(tickCount).trim() === ""
+      ) {
         // closing fence: >= opener's backtick count, nothing after them
         fence.push(line);
         for (const chunk of splitCodeFence(fence)) paragraphs.push(chunk);
@@ -95,7 +101,8 @@ function splitParagraphs(markdown: string): string[] {
     }
   }
 
-  if (fence.length > 0) for (const chunk of splitCodeFence(fence)) paragraphs.push(chunk); // unclosed fence
+  if (fence.length > 0)
+    for (const chunk of splitCodeFence(fence)) paragraphs.push(chunk); // unclosed fence
   if (current.length > 0) paragraphs.push(current.join("\n"));
   return paragraphs;
 }
@@ -114,7 +121,7 @@ export function markdownToDiscordComponents(
 ): TopLevelComponent[] {
   const components: TopLevelComponent[] = [];
   const paragraphs = splitParagraphs(markdown);
-  
+
   for (const paragraph of paragraphs) {
     const trimmed = paragraph.trim();
     if (!trimmed) continue;

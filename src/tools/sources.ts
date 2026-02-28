@@ -31,7 +31,9 @@ export function createSourcesTools(collectedSources: SourceRef[]) {
               .min(1)
               .describe("The citation index (1 for ¹, 2 for ², etc.)"),
             url: z.string().url().describe("Source URL"),
-            title: z.string().describe("Short descriptive title for the source"),
+            title: z
+              .string()
+              .describe("Short descriptive title for the source"),
           })
         ),
       }),

@@ -55,7 +55,12 @@ async function tick(client: Client): Promise<void> {
     await db
       .update(scheduledTasks)
       .set({ nextRunAt: CLAIM_SENTINEL })
-      .where(inArray(scheduledTasks.id, dueTasks.map((t) => t.id)));
+      .where(
+        inArray(
+          scheduledTasks.id,
+          dueTasks.map((t) => t.id)
+        )
+      );
 
     for (const task of dueTasks) {
       await fireTask(client, task, task.nextRunAt); // original scheduled time

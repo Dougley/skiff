@@ -68,7 +68,9 @@ export const createWebTools = () => {
         if (response.status === 429) {
           const reset = response.headers.get("X-RateLimit-Reset");
           const firstReset = reset ? Number(reset.split(",")[0]?.trim()) : NaN;
-          const delay = Number.isFinite(firstReset) ? Math.min(firstReset, 5) * 1000 : 2000;
+          const delay = Number.isFinite(firstReset)
+            ? Math.min(firstReset, 5) * 1000
+            : 2000;
           await new Promise((r) => setTimeout(r, delay));
           response = await throttledBraveFetch(url, init);
         }
