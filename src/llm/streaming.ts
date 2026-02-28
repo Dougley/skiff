@@ -67,7 +67,7 @@ export interface ChatContext {
   onToolActivity?: (event: ToolActivityEvent) => void;
   /**
    * Maximum number of LLM ↔ tool round-trips before forcing a text reply.
-   * Defaults to 5.
+   * Defaults to 50.
    */
   maxSteps?: number;
   /** Optional AbortSignal to cancel the request. */
@@ -97,7 +97,7 @@ export interface ChatResult {
 
 // constants
 
-const DEFAULT_MAX_STEPS = 5;
+const DEFAULT_MAX_STEPS = 50;
 
 // block generation when estimated input tokens exceed this fraction of the context window
 const CONTEXT_BLOCK_THRESHOLD = 0.9;
