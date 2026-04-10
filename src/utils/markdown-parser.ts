@@ -49,6 +49,25 @@ function splitCodeFence(fenceLines: string[]): string[] {
   return result;
 }
 
+// split a plain text block that exceeds MAX_TEXT_CHARS_PER_MESSAGE into smaller chunks,
+// breaking on word boundaries where possible
+function splitLargeText(text: string): string[] {
+  if (text.length <= MAX_TEXT_CHARS_PER_MESSAGE) return [text];
+
+  const chunks: string[] = [];
+  let remaining = text;
+  while (remaining.length > MAX_TEXT_CHARS_PER_MESSAGE) {
+    let cutAt = MAX_TEXT_CHARS_PER_MESSAGE;
+    // try to break on a word boundary
+    const lastSpace = remaining.lastIndexOf(" ", cutAt);
+    if (lastSpace > MAX_TEXT_CHARS_PER_MESSAGE / 2) cutAt = lastSpace;
+    chunks.push(remaining.slice(0, cutAt).trimEnd());
+    remaining = remaining.slice(cutAt).trimStart();
+  }
+  if (remaining) chunks.push(remaining);
+  return chunks;
+}
+
 // split markdown into paragraphs; code fences become their own segments
 function splitParagraphs(markdown: string): string[] {
   const lines = markdown.split("\n");
@@ -132,7 +151,9 @@ export function markdownToDiscordComponents(
     }
 
     if (!IMAGE_LINK_REGEX.test(trimmed)) {
-      components.push(new TextDisplayBuilder().setContent(trimmed));
+      for (const chunk of splitLargeText(trimmed)) {
+        components.push(new TextDisplayBuilder().setContent(chunk));
+      }
       continue;
     }
 
@@ -154,7 +175,9 @@ export function markdownToDiscordComponents(
           pushGallery(components, images);
           images = [];
         }
-        components.push(new TextDisplayBuilder().setContent(textBefore));
+        for (const chunk of splitLargeText(textBefore)) {
+          components.push(new TextDisplayBuilder().setContent(chunk));
+        }
       }
 
       images.push({ url: match[2] ?? "", alt: match[1] ?? "" });
@@ -169,7 +192,9 @@ export function markdownToDiscordComponents(
     // Any trailing text after the last image
     const trailing = trimmed.slice(lastIndex).trim();
     if (trailing) {
-      components.push(new TextDisplayBuilder().setContent(trailing));
+      for (const chunk of splitLargeText(trailing)) {
+        components.push(new TextDisplayBuilder().setContent(chunk));
+      }
     }
   }
 

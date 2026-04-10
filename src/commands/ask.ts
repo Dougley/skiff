@@ -88,12 +88,15 @@ export class AskCommand extends Command {
     });
 
     const [first, ...rest] = result.messages;
-    if (first) {
-      await interaction.editReply({
-        flags: MessageFlags.IsComponentsV2,
-        components: first,
-      });
+    if (!first) {
+      await interaction.editReply({ content: "I had nothing to say." });
+      return;
     }
+
+    await interaction.editReply({
+      flags: MessageFlags.IsComponentsV2,
+      components: first,
+    });
 
     for (const chunk of rest) {
       await interaction.followUp({

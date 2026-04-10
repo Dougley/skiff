@@ -289,7 +289,10 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         }
       }
 
-      finalText = result.text;
+      // only update finalText when the step produced actual content — this prevents
+      // an empty follow-up step (e.g. after cite_sources returns "Sources recorded.")
+      // from overwriting the real answer that was emitted in the preceding step
+      if (result.text) finalText = result.text;
       finalFinishReason = result.finishReason;
       stepCounter++;
 

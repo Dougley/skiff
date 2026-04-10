@@ -127,11 +127,9 @@ async function runHeartbeatForChannel(
   const responseText = result.messages
     .flat()
     .map((component) => {
-      if (
-        "content" in component.data &&
-        typeof component.data.content === "string"
-      ) {
-        return component.data.content;
+      const json = component.toJSON();
+      if ("content" in json && typeof json.content === "string") {
+        return json.content;
       }
       return "";
     })

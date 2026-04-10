@@ -155,15 +155,35 @@ const COLLAPSE_TAIL = 2;
  * Once over COLLAPSE_THRESHOLD, older events fold into a count line and
  * only the most recent COLLAPSE_TAIL calls are shown.
  */
+type ToolEvent = Extract<ToolActivityEvent, { type: "tool" }>;
+
+const isToolEvent = (e: ToolActivityEvent): e is ToolEvent => e.type === "tool";
+
 export function formatToolStatusMessage(
   events: ToolActivityEvent[],
   done: boolean
 ): string {
   // reasoning events are internal — only show tool calls to the user
-  const toolEvents = events.filter((e) => e.type === "tool");
+  // update_status is treated specially: excluded from the tree, used as the tail line
+  const toolEvents = events.filter(
+    (e): e is ToolEvent => isToolEvent(e) && e.toolName !== "update_status"
+  );
 
-  if (toolEvents.length === 0)
-    return `-# ${EMOJI.loading} ${randomLoadingLine()}`;
+  // latest update_status text becomes the tail instead of a random loading line
+  const lastStatus = events
+    .filter(isToolEvent)
+    .filter((e) => e.toolName === "update_status" && isStatusOutput(e.output))
+    .at(-1);
+  const tailLine =
+    lastStatus && isStatusOutput(lastStatus.output)
+      ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}`
+      : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`;
+
+  if (toolEvents.length === 0) {
+    return lastStatus && isStatusOutput(lastStatus.output)
+      ? `-# ${EMOJI.robot} ${lastStatus.output.status}`
+      : `-# ${EMOJI.loading} ${randomLoadingLine()}`;
+  }
 
   if (done) {
     // collapsed single-line summary for completed turns
@@ -183,7 +203,7 @@ export function formatToolStatusMessage(
     const lines = [
       `-# ╭ ··· ${hiddenCount} earlier`,
       ...tail.map((e) => `-# ├ ${formatEventLine(e)}`),
-      `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`,
+      tailLine,
     ];
     return lines.join("\n");
   }
@@ -193,7 +213,7 @@ export function formatToolStatusMessage(
     return `-# ${prefix} ${formatEventLine(e)}`;
   });
 
-  lines.push(`-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`);
+  lines.push(tailLine);
 
   return lines.join("\n");
 }

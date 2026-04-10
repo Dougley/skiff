@@ -272,15 +272,16 @@ export async function handleConversationTurn(
   const components = markdownToDiscordComponents(result.text);
   const messages = splitComponentMessages(components);
 
-  // Append footer (tool summary + sources + context warning) to the last chunk
-  // cite_sources is an internal tool — exclude it from the user-visible tool summary
+  // Build footer (tool summary + sources + context warning) and append to messages.
+  // cite_sources is an internal tool — exclude it from the user-visible tool summary.
+  // Footer components are run through splitComponentMessages to respect Discord limits,
+  // then merged into the last content chunk if they fit, or sent as a trailing chunk.
   const visibleToolEvents = toolEvents.filter(
     (e) => e.type !== "tool" || e.toolName !== "cite_sources"
   );
   const hasToolCalls = visibleToolEvents.some((e) => e.type === "tool");
   const contextWarning = formatContextUsage(result.lastInputTokens);
-  const last = messages[messages.length - 1];
-  if (last && (hasToolCalls || result.sources.length > 0 || contextWarning)) {
+  if (hasToolCalls || result.sources.length > 0 || contextWarning) {
     const footerParts: string[] = [];
     if (hasToolCalls) {
       footerParts.push(formatToolStatusMessage(visibleToolEvents, true));
@@ -291,10 +292,27 @@ export async function handleConversationTurn(
     if (contextWarning) {
       footerParts.push(contextWarning);
     }
-    last.push(
+    const footerComponents = [
       new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small),
-      new TextDisplayBuilder().setContent(footerParts.join("\n"))
-    );
+      new TextDisplayBuilder().setContent(footerParts.join("\n")),
+    ];
+
+    const last = messages[messages.length - 1];
+    if (
+      last &&
+      last.length + footerComponents.length <= 40 &&
+      last
+        .filter((c) => c instanceof TextDisplayBuilder)
+        .reduce((sum, c) => sum + c.toJSON().content.length, 0) +
+        footerParts.join("\n").length <=
+        4000
+    ) {
+      // fits in the last chunk
+      last.push(...footerComponents);
+    } else {
+      // doesn't fit — start a new trailing chunk
+      messages.push(footerComponents);
+    }
   }
 
   logger.debug("conversation turn complete", {
