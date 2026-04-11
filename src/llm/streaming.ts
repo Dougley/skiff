@@ -289,10 +289,6 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         }
       }
 
-      // only update finalText when the step produced actual content — this prevents
-      // an empty follow-up step (e.g. after cite_sources returns "Sources recorded.")
-      // from overwriting the real answer that was emitted in the preceding step
-      if (result.text) finalText = result.text;
       finalFinishReason = result.finishReason;
       stepCounter++;
 
@@ -304,7 +300,15 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         );
       }
 
-      if (result.finishReason !== "tool-calls") break; // model is done (text, error, etc.)
+      if (result.finishReason !== "tool-calls") {
+        // final step — capture whatever text the model produced (may be empty)
+        finalText = result.text;
+        break;
+      }
+
+      // intermediate tool-call step: only carry text forward if produced,
+      // so a tool-only step (cite_sources, etc.) doesn't erase a preceding answer
+      if (result.text) finalText = result.text;
 
       // inject any MCP tools loaded by activate_skill during this step
       const pending = Object.keys(pendingSkillTools);

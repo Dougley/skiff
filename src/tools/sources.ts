@@ -7,11 +7,20 @@ export interface SourceRef {
   title: string;
 }
 
-// renders a SourceRef as a footer line, e.g. "[¹](url) Title"
-const SUPERSCRIPTS = "¹²³⁴⁵⁶⁷⁸⁹";
+// renders a SourceRef as a footer line, e.g. "-# [¹](url) Title"
+// each digit maps to its unicode superscript so compound numbers (10, 11...) compose correctly
+const SUPERSCRIPT_DIGITS = "⁰¹²³⁴⁵⁶⁷⁸⁹";
+function toSuperscript(n: number): string {
+  return String(n)
+    .split("")
+    .map((d) => SUPERSCRIPT_DIGITS[Number(d)] ?? d)
+    .join("");
+}
+
 export function formatSourceRef(source: SourceRef): string {
-  const sup = SUPERSCRIPTS[source.index - 1] ?? String(source.index);
-  return `[${sup}](${source.url}) -# ${source.title}`;
+  const sup = toSuperscript(source.index);
+  // -# at line start renders as Discord subtext; link + title follow on the same line
+  return `-# [${sup}](${source.url}) ${source.title}`;
 }
 
 export function createSourcesTools(collectedSources: SourceRef[]) {
@@ -30,7 +39,7 @@ export function createSourcesTools(collectedSources: SourceRef[]) {
               .int()
               .min(1)
               .describe("The citation index (1 for ¹, 2 for ², etc.)"),
-            url: z.string().url().describe("Source URL"),
+            url: z.url().describe("Source URL"),
             title: z
               .string()
               .describe("Short descriptive title for the source"),
