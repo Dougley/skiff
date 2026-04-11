@@ -15,6 +15,7 @@ import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
 import { formatSourceRef } from "../tools/sources.js";
+import { EMOJI } from "../utils/emoji.js";
 import {
   markdownToDiscordComponents,
   splitComponentMessages,
@@ -287,6 +288,7 @@ export async function handleConversationTurn(
       footerParts.push(formatToolStatusMessage(visibleToolEvents, true));
     }
     if (result.sources.length > 0) {
+      footerParts.push(`\n-# ${EMOJI.internet} Sources:\n`);
       footerParts.push(result.sources.map(formatSourceRef).join("\n"));
     }
     if (contextWarning) {

@@ -11,7 +11,7 @@ export interface SourceRef {
 const SUPERSCRIPTS = "¹²³⁴⁵⁶⁷⁸⁹";
 export function formatSourceRef(source: SourceRef): string {
   const sup = SUPERSCRIPTS[source.index - 1] ?? String(source.index);
-  return `[${sup}](${source.url}) ${source.title}`;
+  return `[${sup}](${source.url}) -# ${source.title}`;
 }
 
 export function createSourcesTools(collectedSources: SourceRef[]) {
