@@ -11,9 +11,8 @@ openlopg_data
 .vscode
 *.md
 !README.md
+!HEARTBEAT.md
 docs
 examples
 helm
 scripts
-skills
-drizzle
