@@ -85,6 +85,8 @@ export const environmentVariableSchema = z.object({
   ACCESS_ALLOWED_GUILDS: z.string().default(""),
   ACCESS_ALLOWED_CHANNELS: z.string().default(""),
   ACCESS_ALLOWED_USERS: z.string().default(""),
+  CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
+  CLOUDFLARE_API_TOKEN: z.string().optional(),
   TOOL_CHANNEL_RULES: z.string().default(""),
   TOOL_GUILD_RULES: z.string().default(""),
   TOOL_DM_RULES: z.string().default(""),

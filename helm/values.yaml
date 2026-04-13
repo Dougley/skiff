@@ -13,12 +13,16 @@ persistence:
 # sensitive env vars — stored in a Secret
 # use existingSecret to reference a pre-created secret instead of putting
 # values here (recommended for production / gitops workflows)
+# BRAVE_SEARCH_API_KEY powers web_search
+# CLOUDFLARE_* powers fetch_url markdown extraction + browser_cdp actions
 secret:
   existingSecret: ""
   DISCORD_BOT_TOKEN: ""
   OPENAI_API_KEY: ""
   ANTHROPIC_API_KEY: ""
   BRAVE_SEARCH_API_KEY: ""
+  CLOUDFLARE_ACCOUNT_ID: ""
+  CLOUDFLARE_API_TOKEN: ""
   OLLAMA_API_KEY: ""
 
 # non-sensitive env vars — stored in a ConfigMap

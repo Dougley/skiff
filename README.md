@@ -19,6 +19,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 - **Multiple LLM backends**, OpenAI, Anthropic, Ollama, or any OpenAI-compatible API
 - **Embedded database**, PGlite with pgvector, no external PostgreSQL needed
 - **Discord tools**, look up server info, users, react to messages, and more
+- **Web + browser tools**, Brave search, page fetch/markdown extraction, and Cloudflare CDP browser control
 - **MCP integration**, extend capabilities with external tool servers
 - **Skills**, activated on demand with minimal prompt overhead
 - **Customizable personas**, define identity, psychology, and speech patterns via [AIEOS](https://aieos.org)
@@ -83,6 +84,20 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `RAG_RECENT_LIMIT` | `12` | Recent messages to include (1-50) |
 | `RAG_MIN_SIMILARITY` | `0.3` | Minimum similarity score (0-1) |
 
+### Web & Browser tools
+
+The `web` tool group includes:
+
+- `web_search` (Brave Search)
+- `fetch_url` (HTML fetch; markdown extraction via Cloudflare when configured)
+- `browser_cdp` (Cloudflare Browser Rendering via CDP: session lifecycle, tabs, navigation, snapshots, screenshots, JS evaluation, and click/type/key interactions)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BRAVE_SEARCH_API_KEY` | -- | API key for Brave Search (enables `web_search`) |
+| `CLOUDFLARE_ACCOUNT_ID` | -- | Cloudflare account ID for Browser Rendering endpoints |
+| `CLOUDFLARE_API_TOKEN` | -- | Cloudflare API token with `Browser Rendering - Edit` permission |
+
 ### Access Control
 
 Control where and for whom the bot operates. Default is `open` (no restrictions).
@@ -126,6 +141,8 @@ TOOL_USER_RULES=222222222222222222:scheduler
 ```
 
 Available tool groups: `discord`, `aieos`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
+
+The `web` group controls `web_search`, `fetch_url`, and `browser_cdp` together.
 
 ### Shell
 
@@ -177,7 +194,6 @@ Skills are able to define their own tools in the form of MCP tool servers. When 
 | `MCP_CONFIG_PATH` | `mcp.json` | Path to MCP server config |
 | `AIEOS_FILE` | `./agent.aieos.json` | Path to persona file |
 | `GUILD_ID` | -- | Restrict slash command registration to a single guild (faster for dev) |
-| `BRAVE_SEARCH_API_KEY` | -- | API key for Brave Search (enables `web_search` tool) |
 | `CONTEXT_WINDOW_SIZE` | `128000` | Max context window size in tokens |
 
 ## Custom Personas
