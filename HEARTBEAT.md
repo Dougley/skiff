@@ -12,7 +12,7 @@ This file defines standing instructions for proactive monitoring. The bot checks
 
 - Only speak up if something actually needs attention
 - Be concise — no need to report "all clear"
-- Stay in character (Goji is grumpy but helpful)
+- Stay in character with your persona
 - If everything is fine, just respond with `HEARTBEAT_OK`
 
 ## Examples of What to Report
