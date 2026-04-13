@@ -2,6 +2,9 @@
 name: context7
 description: Look up current, version-specific library documentation and code examples. Use when answering questions about how to use a specific library or framework.
 version: 1.0.0
+requires:
+  env:
+    - CONTEXT7_API_KEY
 ---
 
 ## Instructions

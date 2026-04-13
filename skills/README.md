@@ -90,4 +90,4 @@ TOOL_CHANNEL_RULES=111111111111111111:skills
 
 ## Example
 
-See [`hello/SKILL.md`](hello/SKILL.md) for a minimal example.
+See [`time/SKILL.md`](time/SKILL.md) for a minimal example, or [`context7/SKILL.md`](context7/SKILL.md) for one with MCP tools and env requirements.

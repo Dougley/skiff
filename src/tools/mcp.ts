@@ -1,9 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { MCPClient } from "@ai-sdk/mcp";
 import { createMCPClient } from "@ai-sdk/mcp";
 import { Experimental_StdioMCPTransport as StdioClientTransport } from "@ai-sdk/mcp/mcp-stdio";
 import { env } from "../env/index.js";
+import { logger } from "../logger/index.js";
 
 interface MCPServerHTTP {
   type: "http";
@@ -28,6 +30,35 @@ type MCPServerConfig = MCPServerHTTP | MCPServerSSE | MCPServerStdio;
 
 interface MCPConfig {
   mcpServers: Record<string, MCPServerConfig>;
+}
+
+const ENV_VAR_PATTERN = /\$\{(\w+)\}/g;
+
+function resolveEnvVars(value: string): string {
+  return value.replace(ENV_VAR_PATTERN, (_, key: string) => {
+    const resolved = process.env[key];
+    if (resolved === undefined) {
+      throw new Error(
+        `MCP config references environment variable \${${key}} which is not set`
+      );
+    }
+    return resolved;
+  });
+}
+
+function resolveEnvVarsInConfig(config: MCPConfig): void {
+  for (const server of Object.values(config.mcpServers)) {
+    if ((server.type === "http" || server.type === "sse") && server.headers) {
+      for (const [key, val] of Object.entries(server.headers)) {
+        server.headers[key] = resolveEnvVars(val);
+      }
+    }
+    if (server.type === "stdio" && server.env) {
+      for (const [key, val] of Object.entries(server.env)) {
+        server.env[key] = resolveEnvVars(val);
+      }
+    }
+  }
 }
 
 export async function loadMCPConfig(configPath?: string): Promise<MCPConfig> {
@@ -58,8 +89,11 @@ export async function loadMCPConfig(configPath?: string): Promise<MCPConfig> {
       throw new Error(`Invalid MCP server config for ${name}: missing command`);
     }
   }
+  resolveEnvVarsInConfig(config);
   return config;
 }
+
+const rootMCPClients: MCPClient[] = [];
 
 export async function getMCPServers(configPath?: string) {
   const config = await loadMCPConfig(configPath);
@@ -111,6 +145,10 @@ export async function getMCPServers(configPath?: string) {
     throw new Error("No MCP servers created from config");
   }
 
+  if (!configPath) {
+    rootMCPClients.push(...clients);
+  }
+
   return clients;
 }
 
@@ -135,3 +173,14 @@ export async function createToolset() {
 }
 
 export const mcpConfig = getMCPServers();
+
+export async function closeMCPClients(): Promise<void> {
+  await Promise.allSettled(
+    rootMCPClients.map((c) =>
+      c.close().catch((err: unknown) => {
+        logger.warn("Failed to close MCP client", { err });
+      })
+    )
+  );
+  rootMCPClients.length = 0;
+}

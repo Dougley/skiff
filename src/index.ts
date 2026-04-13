@@ -6,13 +6,15 @@ import pkg from "../package.json" with { type: "json" };
 import { initAccessConfig } from "./access/guard.js";
 import { loadAieosFile } from "./aieos/index.js";
 import { setAieos } from "./aieos/state.js";
+import { client as pgClient } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { client, startClient } from "./discord/client.js";
 import { env } from "./env/index.js";
-import { startHeartbeat } from "./heartbeat/index.js";
+import { startHeartbeat, stopHeartbeat } from "./heartbeat/index.js";
 import { colors, logger } from "./logger/index.js";
-import { startScheduler } from "./scheduler/index.js";
+import { startScheduler, stopScheduler } from "./scheduler/index.js";
 import { initSkills } from "./skills/index.js";
+import { closeMCPClients } from "./tools/mcp.js";
 
 function printBanner(metrics: {
   agentName: string;
@@ -99,6 +101,36 @@ async function main() {
   startScheduler(ready);
   startHeartbeat(ready);
 }
+
+function registerShutdownHandlers() {
+  let shuttingDown = false;
+
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`Received ${signal}, shutting down gracefully...`);
+
+    try {
+      stopScheduler();
+      stopHeartbeat();
+      await closeMCPClients();
+      await pgClient.close().catch((err: unknown) => {
+        logger.warn("Failed to close database", { err });
+      });
+      client.destroy();
+    } catch (err) {
+      logger.error("Error during shutdown", { err });
+    }
+
+    logger.info("Shutdown complete.");
+    process.exit(0);
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+
+registerShutdownHandlers();
 
 main().catch((err) => {
   logger.resumeLogs();
