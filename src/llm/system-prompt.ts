@@ -64,10 +64,13 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     );
   }
 
-  // Time context: placed after stable sections so it doesn't bust prompt caching
+  // Time context: placed after stable sections so it doesn't bust prompt caching.
+  // Truncated to the minute so the prompt is stable within each 60s window.
+  const now = new Date();
+  now.setSeconds(0, 0);
   parts.push(
     `\n## Context`,
-    `Current time: ${new Date().toISOString()}`,
+    `Current time: ${now.toISOString()}`,
     `Model: ${env.LLM_DEFAULT_MODEL}`
   );
 
