@@ -1,0 +1,1 @@
+ALTER TABLE "conversations" ADD CONSTRAINT "idx_conversations_channel_guild" UNIQUE NULLS NOT DISTINCT ("channel_id","guild_id");

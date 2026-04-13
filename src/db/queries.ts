@@ -14,29 +14,7 @@ export type ConversationLookup = {
 export async function getOrCreateConversation(
   input: ConversationLookup
 ): Promise<Conversation> {
-  const existing = await db
-    .select()
-    .from(conversations)
-    .where(
-      input.guildId
-        ? and(
-            eq(conversations.channelId, input.channelId),
-            eq(conversations.guildId, input.guildId)
-          )
-        : eq(conversations.channelId, input.channelId)
-    )
-    .orderBy(desc(conversations.createdAt))
-    .limit(1);
-
-  if (existing[0]) {
-    await db
-      .update(conversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(conversations.id, existing[0].id));
-    return existing[0];
-  }
-
-  const created = await db
+  const upserted = await db
     .insert(conversations)
     .values({
       channelId: input.channelId,
@@ -44,10 +22,14 @@ export async function getOrCreateConversation(
       model: input.model ?? env.LLM_DEFAULT_MODEL,
       systemPrompt: input.systemPrompt ?? null,
     })
+    .onConflictDoUpdate({
+      target: [conversations.channelId, conversations.guildId],
+      set: { updatedAt: new Date() },
+    })
     .returning();
 
-  if (!created[0]) throw new Error("Failed to create conversation");
-  return created[0];
+  if (!upserted[0]) throw new Error("Failed to create conversation");
+  return upserted[0];
 }
 
 export type MessageInsert = {

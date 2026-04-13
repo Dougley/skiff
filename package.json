@@ -10,6 +10,9 @@
     "typecheck": "tsc --noEmit",
     "build": "tsc",
     "format": "biome check --write",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
     "start": "node --env-file=.env dist/index.js"
   },
   "keywords": [],

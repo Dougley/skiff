@@ -8,6 +8,7 @@ import {
   serial,
   text,
   timestamp,
+  unique,
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
@@ -26,7 +27,10 @@ export const conversations = pgTable(
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
-  (t) => [index("idx_conversations_channel").on(t.channelId)]
+  (t) => [
+    index("idx_conversations_channel").on(t.channelId),
+    unique("idx_conversations_channel_guild").on(t.channelId, t.guildId).nullsNotDistinct(),
+  ]
 );
 
 // messages — ordered history within a conversation

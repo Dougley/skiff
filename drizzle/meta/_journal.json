@@ -29,6 +29,13 @@
       "when": 1771788641862,
       "tag": "0003_yellow_imperial_guard",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1776106131927,
+      "tag": "0004_old_speed_demon",
+      "breakpoints": true
     }
   ]
 }
