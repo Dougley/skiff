@@ -95,6 +95,8 @@ COPY --from=build /app/skills ./skills
 COPY --from=build /app/HEARTBEAT.md ./
 
 # shell tools run in /home/skiff (SHELL_WORK_DIR), not the app CWD
-RUN groupadd --system skiff && useradd --system --gid skiff --create-home skiff
+RUN groupadd --system skiff && useradd --system --gid skiff --create-home skiff && \
+    chown -R skiff:skiff /app
+USER skiff
 
 CMD ["node", "/app/dist/index.js"]
