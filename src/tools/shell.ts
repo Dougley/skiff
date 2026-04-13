@@ -277,10 +277,36 @@ type Job =
       exitCode: number;
       stdout: string;
       stderr: string;
+      finishedAt: number;
     };
+
+const MAX_BACKGROUND_JOBS = 50;
+const JOB_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 export const createShellTools = () => {
   const jobs = new Map<string, Job>();
+
+  const _cleanup = setInterval(() => {
+    const now = Date.now();
+    for (const [id, job] of jobs) {
+      if (job.status === "running") continue;
+      if (now - job.finishedAt > JOB_TTL_MS) {
+        jobs.delete(id);
+      }
+    }
+    if (jobs.size > MAX_BACKGROUND_JOBS) {
+      const doneEntries: [string, Job & { status: "done" | "terminated" }][] =
+        [];
+      for (const [id, job] of jobs) {
+        if (job.status !== "running") doneEntries.push([id, job]);
+      }
+      doneEntries.sort((a, b) => a[1].finishedAt - b[1].finishedAt);
+      const toRemove = jobs.size - MAX_BACKGROUND_JOBS;
+      for (let i = 0; i < toRemove && i < doneEntries.length; i++) {
+        jobs.delete(doneEntries[i]?.[0] ?? "");
+      }
+    }
+  }, 60_000).unref();
 
   return {
     write_file: tool({
@@ -465,6 +491,7 @@ export const createShellTools = () => {
             exitCode: r.exitCode,
             stdout: r.stdout,
             stderr: r.stderr,
+            finishedAt: Date.now(),
           });
         });
 
