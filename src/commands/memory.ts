@@ -94,8 +94,13 @@ export class MemoryCommand extends Command {
       return `**${i + 1}.** ${row.fact}${cat}`;
     });
 
+    const suffix = "\n\n-# Use `/memory forget <number>` to remove a fact.";
+    const text = `Here's what I remember about you:\n\n${lines.join("\n")}${suffix}`;
+
     await interaction.editReply(
-      `Here's what I remember about you:\n\n${lines.join("\n")}\n\n-# Use \`/memory forget <number>\` to remove a fact.`
+      text.length > 2000
+        ? `${text.slice(0, 2000 - suffix.length - 1)}…${suffix}`
+        : text
     );
   }
 

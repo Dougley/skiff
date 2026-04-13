@@ -29,63 +29,65 @@ export async function upsertUserFacts(params: {
 
   let count = 0;
 
-  for (const fact of params.facts) {
-    const category = fact.category ?? null;
-    const guildId = fact.guildScoped ? (params.guildId ?? null) : null;
+  await db.transaction(async (tx) => {
+    for (const fact of params.facts) {
+      const category = fact.category ?? null;
+      const guildId = fact.guildScoped ? (params.guildId ?? null) : null;
 
-    const scopeFilter = guildId
-      ? eq(userFacts.guildId, guildId)
-      : sql`${userFacts.guildId} is null`;
+      const scopeFilter = guildId
+        ? eq(userFacts.guildId, guildId)
+        : sql`${userFacts.guildId} is null`;
 
-    const existing = await db
-      .select()
-      .from(userFacts)
-      .where(
-        and(
-          eq(userFacts.userId, params.userId),
-          eq(userFacts.active, true),
-          category ? eq(userFacts.category, category) : sql`true`,
-          scopeFilter
+      const existing = await tx
+        .select()
+        .from(userFacts)
+        .where(
+          and(
+            eq(userFacts.userId, params.userId),
+            eq(userFacts.active, true),
+            category ? eq(userFacts.category, category) : sql`true`,
+            scopeFilter
+          )
         )
-      )
-      .limit(1);
+        .limit(1);
 
-    const inserted = await db
-      .insert(userFacts)
-      .values({
-        userId: params.userId,
-        guildId,
-        fact: fact.fact,
-        category,
-        confidence:
-          typeof fact.confidence === "number"
-            ? Math.round(Math.min(100, Math.max(0, fact.confidence)))
-            : 80,
-        active: true,
-        sourceMessageId: params.sourceMessageId ?? null,
-      })
-      .returning();
-
-    count += inserted.length;
-
-    if (existing[0] && inserted[0]) {
-      await db
-        .update(userFacts)
-        .set({
-          active: false,
-          supersededBy: inserted[0].id,
-          updatedAt: new Date(),
+      const inserted = await tx
+        .insert(userFacts)
+        .values({
+          userId: params.userId,
+          guildId,
+          fact: fact.fact,
+          category,
+          confidence:
+            typeof fact.confidence === "number"
+              ? Math.round(Math.min(100, Math.max(0, fact.confidence)))
+              : 80,
+          active: true,
+          sourceMessageId: params.sourceMessageId ?? null,
         })
-        .where(eq(userFacts.id, existing[0].id));
+        .returning();
 
-      logger.debug("memory: superseded user fact", {
-        userId: params.userId,
-        category,
-        previousId: existing[0].id,
-        nextId: inserted[0].id,
-      });
+      count += inserted.length;
+
+      if (existing[0] && inserted[0]) {
+        await tx
+          .update(userFacts)
+          .set({
+            active: false,
+            supersededBy: inserted[0].id,
+            updatedAt: new Date(),
+          })
+          .where(eq(userFacts.id, existing[0].id));
+
+        logger.debug("memory: superseded user fact", {
+          userId: params.userId,
+          category,
+          previousId: existing[0].id,
+          nextId: inserted[0].id,
+        });
+      }
     }
-  }
+  });
 
   return count;
 }
