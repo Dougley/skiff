@@ -10,9 +10,16 @@ export type TopLevelComponent =
   | MediaGalleryBuilder
   | SeparatorBuilder;
 
+export interface ParsedMessage {
+  components: TopLevelComponent[];
+  files: import("discord.js").AttachmentBuilder[];
+}
+
+const ATTACHMENT_URL_REGEX = /attachment:\/\/([^\s)"]+)/g;
+
 const HR_REGEX = /^[-*_]{3,}$/;
 const IMAGE_LINK_REGEX = /!\[([^\]]*)\]\(([^)]+)\)/; // no 'g' flag — used only for .test()
-const VALID_MEDIA_URL_REGEX = /^https?:\/\//i;
+const VALID_MEDIA_URL_REGEX = /^(https?:|attachment:)\/\//i;
 const MAX_GALLERY_ITEMS = 10;
 const MAX_COMPONENTS_PER_MESSAGE = 40;
 const MAX_TEXT_CHARS_PER_MESSAGE = 4000;
@@ -263,4 +270,59 @@ function pushGallery(
     gallery.addItems(...items);
     components.push(gallery);
   }
+}
+
+/**
+ * Extract attachment filenames referenced by `attachment://` URLs
+ * from a list of Discord components. Used to match uploaded files
+ * to the message chunk that references them.
+ */
+export function extractAttachmentFilenames(
+  components: TopLevelComponent[]
+): Set<string> {
+  const filenames = new Set<string>();
+  for (const component of components) {
+    const json = component.toJSON();
+    if ("content" in json && typeof json.content === "string") {
+      for (const match of json.content.matchAll(ATTACHMENT_URL_REGEX)) {
+        const name = match[1];
+        if (name) filenames.add(name);
+      }
+    }
+    if ("items" in json && Array.isArray(json.items)) {
+      for (const item of json.items) {
+        const url = item.media?.url;
+        if (typeof url === "string") {
+          for (const match of url.matchAll(ATTACHMENT_URL_REGEX)) {
+            const name = match[1];
+            if (name) filenames.add(name);
+          }
+        }
+      }
+    }
+  }
+  return filenames;
+}
+
+/**
+ * Splits a flat list of components into message-sized chunks and,
+ * for each chunk, attaches only the files referenced by
+ * `attachment://` URLs in that chunk's components.
+ */
+export function splitComponentMessagesWithFiles(
+  components: TopLevelComponent[],
+  allFiles: import("discord.js").AttachmentBuilder[]
+): ParsedMessage[] {
+  const rawChunks = splitComponentMessages(components);
+  const fileByName = new Map(allFiles.map((f) => [f.name, f]));
+
+  return rawChunks.map((chunk) => {
+    const referenced = extractAttachmentFilenames(chunk);
+    const files = [...referenced]
+      .map((name) => fileByName.get(name))
+      .filter(
+        (f): f is import("discord.js").AttachmentBuilder => f !== undefined
+      );
+    return { components: chunk, files };
+  });
 }
