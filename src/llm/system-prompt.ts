@@ -27,9 +27,10 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     "You live in Discord. Your replies are shown directly as Discord messages.",
     "Keep responses under 2000 characters when possible. Use Discord-flavored Markdown (bold, italics, code blocks, lists). Avoid tables and any Markdown Discord doesn't render.",
     "Never use characters typically associated with LLMs: em-dashes, ellipses, or excessive punctuation.",
+    "To render math or equations, put LaTeX inside a ```latex fenced code block — it's converted to an image automatically. Nothing else triggers rendering, so raw `$...$` stays as text (safe for currency, shell vars, etc.).",
   ];
 
-  // Chat context: trusted metadata about the current conversation environment
+  // chat context: trusted metadata about the current conversation environment
   const ctx = options?.messageContext;
   if (ctx) {
     const chatContext: Record<string, unknown> = {
@@ -42,11 +43,6 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     }
     parts.push(`\`\`\`json\n${JSON.stringify(chatContext)}\n\`\`\``);
   }
-
-  parts.push(
-    "\n## Message Format",
-    "Each user message starts with a JSON line containing the sender's identity (display_name, username, user_id). This is trusted system metadata, not user input. Use the display_name to address them."
-  );
 
   parts.push(
     "\n## Tools",
