@@ -29,7 +29,9 @@ export const conversations = pgTable(
   },
   (t) => [
     index("idx_conversations_channel").on(t.channelId),
-    unique("idx_conversations_channel_guild").on(t.channelId, t.guildId).nullsNotDistinct(),
+    unique("idx_conversations_channel_guild")
+      .on(t.channelId, t.guildId)
+      .nullsNotDistinct(),
   ]
 );
 

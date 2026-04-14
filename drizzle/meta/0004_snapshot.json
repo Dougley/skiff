@@ -77,10 +77,7 @@
         "idx_conversations_channel_guild": {
           "name": "idx_conversations_channel_guild",
           "nullsNotDistinct": true,
-          "columns": [
-            "channel_id",
-            "guild_id"
-          ]
+          "columns": ["channel_id", "guild_id"]
         }
       },
       "policies": {},
@@ -138,9 +135,7 @@
         "heartbeat_channels_channel_id_unique": {
           "name": "heartbeat_channels_channel_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "channel_id"
-          ]
+          "columns": ["channel_id"]
         }
       },
       "policies": {},
@@ -238,12 +233,8 @@
           "name": "message_embeddings_message_id_messages_id_fk",
           "tableFrom": "message_embeddings",
           "tableTo": "messages",
-          "columnsFrom": [
-            "message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["message_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -251,12 +242,8 @@
           "name": "message_embeddings_conversation_id_conversations_id_fk",
           "tableFrom": "message_embeddings",
           "tableTo": "conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -358,12 +345,8 @@
           "name": "messages_conversation_id_conversations_id_fk",
           "tableFrom": "messages",
           "tableTo": "conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["conversation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -641,12 +624,8 @@
           "name": "topic_knowledge_source_conversation_id_conversations_id_fk",
           "tableFrom": "topic_knowledge",
           "tableTo": "conversations",
-          "columnsFrom": [
-            "source_conversation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_conversation_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -796,12 +775,8 @@
           "name": "user_facts_source_message_id_messages_id_fk",
           "tableFrom": "user_facts",
           "tableTo": "messages",
-          "columnsFrom": [
-            "source_message_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_message_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }

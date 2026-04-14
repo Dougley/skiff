@@ -73,7 +73,10 @@ type CdpSendFn = (
   params?: Record<string, unknown>
 ) => Promise<unknown>;
 
-type CdpWaitForEventFn = (method: string, timeoutMs?: number) => Promise<unknown>;
+type CdpWaitForEventFn = (
+  method: string,
+  timeoutMs?: number
+) => Promise<unknown>;
 
 const CDP_TIMEOUT_MS = 30_000;
 
@@ -127,7 +130,9 @@ async function closeCloudflareBrowserSession(sessionId: string): Promise<void> {
   }
 }
 
-async function listCloudflareTabs(sessionId: string): Promise<CloudflareTabTarget[]> {
+async function listCloudflareTabs(
+  sessionId: string
+): Promise<CloudflareTabTarget[]> {
   const response = await fetch(
     `${getCloudflareBrowserApiBase()}/${encodeURIComponent(sessionId)}/json/list`,
     {
@@ -161,7 +166,10 @@ async function openCloudflareTab(
   return (await response.json()) as CloudflareTabTarget;
 }
 
-async function closeCloudflareTab(sessionId: string, targetId: string): Promise<void> {
+async function closeCloudflareTab(
+  sessionId: string,
+  targetId: string
+): Promise<void> {
   const response = await fetch(
     `${getCloudflareBrowserApiBase()}/${encodeURIComponent(
       sessionId
@@ -192,8 +200,14 @@ async function withCdpSocket<T>(
   });
 
   let nextId = 1;
-  const pending = new Map<number, { resolve: (value: unknown) => void; reject: (err: Error) => void }>();
-  const eventListeners = new Map<string, { resolve: (value: unknown) => void; reject: (err: Error) => void }>();
+  const pending = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (err: Error) => void }
+  >();
+  const eventListeners = new Map<
+    string,
+    { resolve: (value: unknown) => void; reject: (err: Error) => void }
+  >();
 
   const closeWithError = (err: Error) => {
     for (const p of pending.values()) p.reject(err);
@@ -268,7 +282,10 @@ async function withCdpSocket<T>(
     ]);
   };
 
-  const waitForEvent: CdpWaitForEventFn = (method, timeoutMs = CDP_TIMEOUT_MS) =>
+  const waitForEvent: CdpWaitForEventFn = (
+    method,
+    timeoutMs = CDP_TIMEOUT_MS
+  ) =>
     Promise.race([
       new Promise<unknown>((resolve, reject) => {
         eventListeners.set(method, { resolve, reject });
@@ -308,7 +325,10 @@ async function ensureSessionId(sessionId?: string): Promise<string> {
   return created.sessionId;
 }
 
-async function resolveTarget(sessionId: string, targetId?: string): Promise<CloudflareTabTarget> {
+async function resolveTarget(
+  sessionId: string,
+  targetId?: string
+): Promise<CloudflareTabTarget> {
   const tabs = await listCloudflareTabs(sessionId);
   if (tabs.length === 0) {
     throw new Error("No tabs are available in this browser session.");
@@ -386,15 +406,24 @@ async function captureScreenshotBase64(params: {
     };
 
     if ((format ?? "png") === "jpeg" && typeof quality === "number") {
-      screenshotParams.quality = Math.max(0, Math.min(100, Math.floor(quality)));
+      screenshotParams.quality = Math.max(
+        0,
+        Math.min(100, Math.floor(quality))
+      );
     }
 
     if (fullPage) {
       const metrics = (await send("Page.getLayoutMetrics")) as {
         cssContentSize?: { width?: number; height?: number };
       };
-      const width = Math.max(1, Math.floor(metrics.cssContentSize?.width ?? 1280));
-      const height = Math.max(1, Math.floor(metrics.cssContentSize?.height ?? 720));
+      const width = Math.max(
+        1,
+        Math.floor(metrics.cssContentSize?.width ?? 1280)
+      );
+      const height = Math.max(
+        1,
+        Math.floor(metrics.cssContentSize?.height ?? 720)
+      );
       screenshotParams.clip = {
         x: 0,
         y: 0,
@@ -414,7 +443,10 @@ async function captureScreenshotBase64(params: {
   return data;
 }
 
-async function evaluateInTarget(wsUrl: string, expression: string): Promise<unknown> {
+async function evaluateInTarget(
+  wsUrl: string,
+  expression: string
+): Promise<unknown> {
   const result = await withCdpSocket(wsUrl, async (send) => {
     await send("Runtime.enable");
     return await send("Runtime.evaluate", {
@@ -622,7 +654,9 @@ export const createWebTools = () => {
           if (action === "session_end") {
             const resolvedSessionId = resolveSessionId(sessionId);
             if (!resolvedSessionId) {
-              return { error: "No sessionId provided and no active session exists." };
+              return {
+                error: "No sessionId provided and no active session exists.",
+              };
             }
             await closeCloudflareBrowserSession(resolvedSessionId);
             if (cloudflareBrowserState.sessionId === resolvedSessionId) {
@@ -742,7 +776,11 @@ export const createWebTools = () => {
                 return { ok: true };
               })()`
             );
-            return { sessionId: activeSessionId, targetId: target.id, result: value };
+            return {
+              sessionId: activeSessionId,
+              targetId: target.id,
+              result: value,
+            };
           }
 
           if (action === "type") {
@@ -766,7 +804,11 @@ export const createWebTools = () => {
                 return { ok: true };
               })()`
             );
-            return { sessionId: activeSessionId, targetId: target.id, result: value };
+            return {
+              sessionId: activeSessionId,
+              targetId: target.id,
+              result: value,
+            };
           }
 
           if (action === "press") {
@@ -783,7 +825,11 @@ export const createWebTools = () => {
                 return { ok: true };
               })()`
             );
-            return { sessionId: activeSessionId, targetId: target.id, result: value };
+            return {
+              sessionId: activeSessionId,
+              targetId: target.id,
+              result: value,
+            };
           }
 
           return { error: `Unsupported action: ${action}` };
