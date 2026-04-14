@@ -17,10 +17,11 @@ import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
 import { formatSourceRef } from "../tools/sources.js";
 import { EMOJI } from "../utils/emoji.js";
+import { renderLatex } from "../utils/latex.js";
 import {
   markdownToDiscordComponents,
-  splitComponentMessages,
-  type TopLevelComponent,
+  type ParsedMessage,
+  splitComponentMessagesWithFiles,
 } from "../utils/markdown-parser.js";
 import {
   formatContextUsage,
@@ -63,8 +64,8 @@ export interface ConversationTurnParams {
 }
 
 export interface ConversationTurnResult {
-  /** The response split into message-sized chunks of components. */
-  messages: TopLevelComponent[][];
+  /** The response split into message-sized chunks with their attachments. */
+  messages: ParsedMessage[];
   /** Whether any tools were called during this turn. */
   usedTools: boolean;
   /** Number of messages in the conversation history (including this turn). */
@@ -195,7 +196,7 @@ export async function handleConversationTurn(
         `The conversation is too long for me to continue. Use ${clearMention(guildId)} to start a fresh conversation.`
       );
       return {
-        messages: splitComponentMessages(components),
+        messages: splitComponentMessagesWithFiles(components, []),
         usedTools: false,
         historyLength: history.length + 1,
       };
@@ -276,8 +277,9 @@ export async function handleConversationTurn(
   });
 
   // build response components & split into message-sized chunks
-  const components = markdownToDiscordComponents(result.text);
-  const messages = splitComponentMessages(components);
+  const { text: latexText, files: latexFiles } = await renderLatex(result.text);
+  const components = markdownToDiscordComponents(latexText);
+  const messages = splitComponentMessagesWithFiles(components, latexFiles);
 
   // Build footer (tool summary + sources + context warning) and append to messages.
   // cite_sources is an internal tool — exclude it from the user-visible tool summary.
@@ -308,18 +310,18 @@ export async function handleConversationTurn(
     const last = messages[messages.length - 1];
     if (
       last &&
-      last.length + footerComponents.length <= 40 &&
-      last
+      last.components.length + footerComponents.length <= 40 &&
+      last.components
         .filter((c) => c instanceof TextDisplayBuilder)
         .reduce((sum, c) => sum + c.toJSON().content.length, 0) +
         footerParts.join("\n").length <=
         4000
     ) {
       // fits in the last chunk
-      last.push(...footerComponents);
+      last.components.push(...footerComponents);
     } else {
       // doesn't fit — start a new trailing chunk
-      messages.push(footerComponents);
+      messages.push({ components: footerComponents, files: [] });
     }
   }
 

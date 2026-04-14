@@ -231,19 +231,22 @@ export class MessagesListener extends Listener {
       } else if (status.message) {
         await status.message.edit({
           flags: MessageFlags.IsComponentsV2,
-          components: first,
+          components: first.components,
+          files: first.files,
         });
       } else {
         await message.reply({
           flags: MessageFlags.IsComponentsV2,
-          components: first,
+          components: first.components,
+          files: first.files,
         });
       }
 
       for (const chunk of rest) {
         await message.reply({
           flags: MessageFlags.IsComponentsV2,
-          components: chunk,
+          components: chunk.components,
+          files: chunk.files,
         });
       }
 

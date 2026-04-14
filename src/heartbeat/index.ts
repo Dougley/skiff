@@ -125,7 +125,7 @@ async function runHeartbeatForChannel(
 
   // Check if response should be suppressed
   const responseText = result.messages
-    .flat()
+    .flatMap((msg) => msg.components)
     .map((component) => {
       const json = component.toJSON();
       if ("content" in json && typeof json.content === "string") {
@@ -146,10 +146,11 @@ async function runHeartbeatForChannel(
   }
 
   // Send response to channel
-  for (const messageComponents of result.messages) {
+  for (const msg of result.messages) {
     await channel.send({
       flags: MessageFlags.IsComponentsV2,
-      components: messageComponents,
+      components: msg.components,
+      files: msg.files,
     });
   }
 

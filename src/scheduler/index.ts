@@ -122,10 +122,11 @@ async function fireTask(
     });
 
     // Send response to channel
-    for (const messageComponents of result.messages) {
+    for (const msg of result.messages) {
       await channel.send({
         flags: MessageFlags.IsComponentsV2,
-        components: messageComponents,
+        components: msg.components,
+        files: msg.files,
       });
     }
 

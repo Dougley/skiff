@@ -95,13 +95,15 @@ export class AskCommand extends Command {
 
     await interaction.editReply({
       flags: MessageFlags.IsComponentsV2,
-      components: first,
+      components: first.components,
+      files: first.files,
     });
 
     for (const chunk of rest) {
       await interaction.followUp({
         flags: MessageFlags.IsComponentsV2,
-        components: chunk,
+        components: chunk.components,
+        files: chunk.files,
       });
     }
     logger.info(
