@@ -6,6 +6,7 @@ import {
   TextDisplayBuilder,
 } from "discord.js";
 import {
+  getLastAssistantInputTokens,
   getOrCreateConversation,
   getRecentMessages,
   insertMessage,
@@ -128,6 +129,7 @@ export async function handleConversationTurn(
   // conversation & history
   const conversation = await getOrCreateConversation({ channelId, guildId });
   const history = await getRecentMessages(conversation.id);
+  const priorInputTokens = await getLastAssistantInputTokens(conversation.id);
 
   // persist user message
   const userMsg = await insertMessage({
@@ -184,6 +186,7 @@ export async function handleConversationTurn(
       toolContext,
       messageContext,
       onToolActivity,
+      priorInputTokens,
     });
   } catch (err) {
     if (debounceTimer) clearTimeout(debounceTimer);
@@ -215,6 +218,7 @@ export async function handleConversationTurn(
           conversationId: conversation.id,
           role: "assistant",
           content: msg.content || null,
+          lastInputTokens: result.lastInputTokens,
         });
       } else {
         const textParts = msg.content.filter((p) => p.type === "text");
@@ -230,6 +234,7 @@ export async function handleConversationTurn(
           role: "assistant",
           content: textContent,
           toolCalls: toolCallParts.length > 0 ? toolCallParts : null,
+          lastInputTokens: result.lastInputTokens,
         });
       }
     } else if (msg.role === "tool") {
@@ -249,6 +254,7 @@ export async function handleConversationTurn(
       conversationId: conversation.id,
       role: "assistant",
       content: result.text,
+      lastInputTokens: result.lastInputTokens,
     });
   }
 

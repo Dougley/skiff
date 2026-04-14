@@ -48,6 +48,7 @@ export const messages = pgTable(
     toolCalls: jsonb("tool_calls").$type<ToolCallPart[]>(), // assistant tool-call parts
     toolResults: jsonb("tool_results").$type<ToolContent>(), // tool result parts
     userId: text("user_id"), // Discord user ID (for user messages)
+    lastInputTokens: integer("last_input_tokens"), // provider-reported input tokens for the turn that produced this message
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (t) => [

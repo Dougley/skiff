@@ -4,7 +4,12 @@ import type {
   ModelMessage,
   ToolModelMessage,
 } from "@ai-sdk/provider-utils";
-import { generateText, type LanguageModelUsage, stepCountIs } from "ai";
+import {
+  APICallError,
+  generateText,
+  type LanguageModelUsage,
+  stepCountIs,
+} from "ai";
 import { env } from "../env/index.js";
 import { logger } from "../logger/index.js";
 import { fetchUserFacts } from "../memory/user-facts.js";
@@ -60,6 +65,8 @@ export interface ChatContext {
   userId?: string | null;
   /** Discord metadata about the sender and channel. */
   messageContext?: MessageContext;
+  /** Provider-reported input tokens from the previous turn in this conversation. */
+  priorInputTokens?: number | null;
   /**
    * Called after each tool execution so the caller can update a
    * "working on it…" message in Discord with live status.
@@ -101,31 +108,22 @@ export interface ChatResult {
 
 const DEFAULT_MAX_STEPS = 50;
 
-// block generation when estimated input tokens exceed this fraction of the context window
-const CONTEXT_BLOCK_THRESHOLD = 0.9;
-// rough token overhead for system prompt + user facts (not counted in message content)
-const SYSTEM_PROMPT_TOKEN_OVERHEAD = 3_000;
+// refuse when provider-reported input tokens exceed: window - output_reserve - buffer
+const OUTPUT_RESERVE_TOKENS = 32_000; // room for assistant reply
+const CONTEXT_SAFETY_BUFFER = 20_000; // slack for next user turn + growth
 
-// helpers
+function contextOverflowThreshold(): number {
+  return (
+    env.CONTEXT_WINDOW_SIZE - OUTPUT_RESERVE_TOKENS - CONTEXT_SAFETY_BUFFER
+  );
+}
 
-// rough token estimate from message content (chars / 3.5 + system prompt overhead)
-function estimateInputTokens(messages: ModelMessage[]): number {
-  let chars = 0;
-  for (const m of messages) {
-    const c = m.content;
-    if (typeof c === "string") {
-      chars += c.length;
-    } else if (Array.isArray(c)) {
-      for (const part of c) {
-        if ("text" in part && typeof part.text === "string") {
-          chars += part.text.length;
-        } else {
-          chars += JSON.stringify(part).length;
-        }
-      }
-    }
-  }
-  return Math.ceil(chars / 3.5) + SYSTEM_PROMPT_TOKEN_OVERHEAD;
+// anthropic overflow: 400 APICallError with "prompt is too long" in the message.
+// the ai sdk has no typed overflow error — https://github.com/vercel/ai/discussions/8193
+function isProviderContextOverflowError(err: unknown): boolean {
+  if (!APICallError.isInstance(err)) return false;
+  if (err.statusCode !== 400) return false;
+  return /prompt is too long/i.test(err.message);
 }
 
 // main chat loop
@@ -190,10 +188,17 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     model: String(model),
   });
 
-  // pre-flight: refuse before spending tokens if history is already near the limit
-  const estimated = estimateInputTokens(messages);
-  if (estimated >= env.CONTEXT_WINDOW_SIZE * CONTEXT_BLOCK_THRESHOLD) {
-    throw new ContextWindowFullError(estimated, env.CONTEXT_WINDOW_SIZE);
+  // pre-flight: refuse before spending tokens if prior turn was already over threshold
+  const threshold = contextOverflowThreshold();
+  if (
+    ctx.priorInputTokens !== undefined &&
+    ctx.priorInputTokens !== null &&
+    ctx.priorInputTokens > threshold
+  ) {
+    throw new ContextWindowFullError(
+      ctx.priorInputTokens,
+      env.CONTEXT_WINDOW_SIZE
+    );
   }
 
   // manual agentic loop — lets us inject skill MCP tools between steps
@@ -228,6 +233,15 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         tools,
         stopWhen: stepCountIs(1),
         abortSignal,
+      }).catch((err) => {
+        // anthropic returns a 400 "prompt is too long" when history exceeds the window
+        if (isProviderContextOverflowError(err)) {
+          throw new ContextWindowFullError(
+            lastInputTokens,
+            env.CONTEXT_WINDOW_SIZE
+          );
+        }
+        throw err;
       });
 
       const newMessages = result.response.messages as ChatResponseMessage[];
@@ -292,10 +306,10 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       finalFinishReason = result.finishReason;
       stepCounter++;
 
-      // context overflow — the model ran out of room mid-generation
-      if (result.finishReason === "length") {
+      // post-step: abort before next round-trip if this step pushed us over
+      if (lastInputTokens > threshold) {
         throw new ContextWindowFullError(
-          totalUsage.inputTokens ?? 0,
+          lastInputTokens,
           env.CONTEXT_WINDOW_SIZE
         );
       }

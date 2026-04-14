@@ -39,6 +39,7 @@ export type MessageInsert = {
   userId?: string | null;
   toolCalls?: ToolCallPart[] | null;
   toolResults?: ToolContent | null;
+  lastInputTokens?: number | null;
 };
 
 export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
@@ -51,6 +52,7 @@ export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
       userId: input.userId ?? null,
       toolCalls: input.toolCalls ?? null,
       toolResults: input.toolResults ?? null,
+      lastInputTokens: input.lastInputTokens ?? null,
     })
     .returning();
 
@@ -93,6 +95,25 @@ export async function getRecentMessages(
     .limit(limit ?? env.RAG_RECENT_LIMIT);
 
   return rows.reverse();
+}
+
+// most recent provider-reported input tokens for this conversation, or null if none
+export async function getLastAssistantInputTokens(
+  conversationId: string
+): Promise<number | null> {
+  const [row] = await db
+    .select({ lastInputTokens: messages.lastInputTokens })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.conversationId, conversationId),
+        isNotNull(messages.lastInputTokens)
+      )
+    )
+    .orderBy(desc(messages.createdAt))
+    .limit(1);
+
+  return row?.lastInputTokens ?? null;
 }
 
 /**

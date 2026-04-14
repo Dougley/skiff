@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "last_input_tokens" integer;
