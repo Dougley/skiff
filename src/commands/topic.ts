@@ -1,5 +1,9 @@
 import { Command } from "@sapphire/framework";
-import { MessageFlags } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  InteractionContextType,
+  MessageFlags,
+} from "discord.js";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, topicKnowledge } from "../db/index.js";
 import { env } from "../env/index.js";
@@ -11,37 +15,51 @@ export class TopicCommand extends Command {
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
-    registry.registerChatInputCommand(
-      (builder) => {
-        builder
-          .setName("topic")
-          .setDescription("Manage stored topic knowledge")
-          .addSubcommand((sub) =>
-            sub
-              .setName("list")
-              .setDescription("View all stored topic summaries")
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("forget")
-              .setDescription("Remove a specific topic by its number")
-              .addIntegerOption((opt) =>
-                opt
-                  .setName("number")
-                  .setDescription("The topic number from /topic list to remove")
-                  .setRequired(true)
-                  .setMinValue(1)
-              )
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("forget-all")
-              .setDescription("Remove all stored topic knowledge")
-          );
-      },
-      {
-        guildIds: env.GUILD_ID ? [env.GUILD_ID] : undefined,
-      }
+    const buildBase = (builder: import("discord.js").SlashCommandBuilder) =>
+      builder
+        .setName("topic")
+        .setDescription("Manage stored topic knowledge")
+        .addSubcommand((sub) =>
+          sub.setName("list").setDescription("View all stored topic summaries")
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName("forget")
+            .setDescription("Remove a specific topic by its number")
+            .addIntegerOption((opt) =>
+              opt
+                .setName("number")
+                .setDescription("The topic number from /topic list to remove")
+                .setRequired(true)
+                .setMinValue(1)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName("forget-all")
+            .setDescription("Remove all stored topic knowledge")
+        );
+
+    if (env.GUILD_ID) {
+      registry.registerChatInputCommand((builder) => buildBase(builder), {
+        guildIds: [env.GUILD_ID],
+      });
+    } else {
+      registry.registerChatInputCommand((builder) =>
+        buildBase(builder)
+          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+          .setContexts([InteractionContextType.Guild])
+      );
+    }
+
+    registry.registerChatInputCommand((builder) =>
+      buildBase(builder)
+        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setContexts([
+          InteractionContextType.Guild,
+          InteractionContextType.BotDM,
+          InteractionContextType.PrivateChannel,
+        ])
     );
   }
 

@@ -1,5 +1,10 @@
 import { Command } from "@sapphire/framework";
-import { MessageFlags } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  InteractionContextType,
+  MessageFlags,
+  type SlashCommandBuilder,
+} from "discord.js";
 import { deleteConversation } from "../db/queries.js";
 import { env } from "../env/index.js";
 import { logger } from "../logger/index.js";
@@ -10,15 +15,31 @@ export class ClearCommand extends Command {
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
-    registry.registerChatInputCommand(
-      (builder) => {
-        builder
-          .setName("clear")
-          .setDescription("Clear the conversation history in this channel");
-      },
-      {
-        guildIds: env.GUILD_ID ? [env.GUILD_ID] : undefined,
-      }
+    const buildBase = (builder: SlashCommandBuilder) =>
+      builder
+        .setName("clear")
+        .setDescription("Clear the conversation history in this channel");
+
+    if (env.GUILD_ID) {
+      registry.registerChatInputCommand((builder) => buildBase(builder), {
+        guildIds: [env.GUILD_ID],
+      });
+    } else {
+      registry.registerChatInputCommand((builder) =>
+        buildBase(builder)
+          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+          .setContexts([InteractionContextType.Guild])
+      );
+    }
+
+    registry.registerChatInputCommand((builder) =>
+      buildBase(builder)
+        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setContexts([
+          InteractionContextType.Guild,
+          InteractionContextType.BotDM,
+          InteractionContextType.PrivateChannel,
+        ])
     );
   }
 

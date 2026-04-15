@@ -1,64 +1,70 @@
 import { Command } from "@sapphire/framework";
 import {
+  ApplicationCommandType,
   ApplicationIntegrationType,
+  type ContextMenuCommandInteraction,
   InteractionContextType,
   MessageFlags,
-  type SlashCommandBuilder,
   TextDisplayBuilder,
 } from "discord.js";
 import { env } from "../env/index.js";
 import { handleConversationTurn } from "../llm/conversation-turn.js";
 import { logger } from "../logger/index.js";
 
-export class AskCommand extends Command {
+export class AskUserCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
     super(context, { ...options, preconditions: ["AccessAllowlist"] });
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
-    const buildBase = (builder: SlashCommandBuilder) =>
-      builder
-        .setName("ask")
-        .setDescription("Ask a question to the AI assistant")
-        .addStringOption((option) =>
-          option
-            .setName("question")
-            .setDescription("Your question for the assistant")
-            .setRequired(true)
-        );
-
     if (env.GUILD_ID) {
-      registry.registerChatInputCommand((builder) => buildBase(builder), {
-        guildIds: [env.GUILD_ID],
-      });
-    } else {
-      registry.registerChatInputCommand((builder) =>
-        buildBase(builder)
-          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-          .setContexts([InteractionContextType.Guild])
+      registry.registerContextMenuCommand(
+        {
+          name: "Ask about user",
+          type: ApplicationCommandType.User,
+        },
+        { guildIds: [env.GUILD_ID] }
       );
+    } else {
+      registry.registerContextMenuCommand({
+        name: "Ask about user",
+        type: ApplicationCommandType.User,
+        integrationTypes: [ApplicationIntegrationType.GuildInstall],
+        contexts: [InteractionContextType.Guild],
+      });
     }
 
-    registry.registerChatInputCommand((builder) =>
-      buildBase(builder)
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
-        .setContexts([
-          InteractionContextType.Guild,
-          InteractionContextType.BotDM,
-          InteractionContextType.PrivateChannel,
-        ])
-    );
+    registry.registerContextMenuCommand({
+      name: "Ask about user",
+      type: ApplicationCommandType.User,
+      integrationTypes: [ApplicationIntegrationType.UserInstall],
+      contexts: [
+        InteractionContextType.Guild,
+        InteractionContextType.BotDM,
+        InteractionContextType.PrivateChannel,
+      ],
+    });
   }
 
-  public override async chatInputRun(
-    interaction: Command.ChatInputCommandInteraction
+  public override async contextMenuRun(
+    interaction: ContextMenuCommandInteraction
   ) {
-    logger.info(
-      `Received /ask command from user ${interaction.user.id} in guild ${interaction.guildId}, channel ${interaction.channelId}`
-    );
-    await interaction.deferReply();
+    if (!interaction.isUserContextMenuCommand()) {
+      await interaction.reply({
+        flags: MessageFlags.Ephemeral,
+        content: "This command can only be used on a user.",
+      });
+      return;
+    }
 
-    const question = interaction.options.getString("question", true);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const target = interaction.targetUser;
+    const targetMember = interaction.guild
+      ? await interaction.guild.members.fetch(target.id).catch(() => null)
+      : null;
+    const prompt = `Please help me with this selected user:\n\n- username: ${target.username}\n- user id: ${target.id}\n- display name: ${target.displayName}${targetMember?.displayName ? `\n- server nickname: ${targetMember.displayName}` : ""}`;
+
     const channel = interaction.channel;
     const channelName =
       channel && "name" in channel ? `#${channel.name}` : "DM";
@@ -68,8 +74,12 @@ export class AskCommand extends Command {
           .catch(() => null)
       : null;
 
+    logger.info(
+      `Received user context command from user ${interaction.user.id} for target ${target.id}`
+    );
+
     const result = await handleConversationTurn({
-      content: question,
+      content: prompt,
       userId: interaction.user.id,
       channelId: interaction.channelId,
       guildId: interaction.guildId,
@@ -128,8 +138,5 @@ export class AskCommand extends Command {
         files: chunk.files,
       });
     }
-    logger.info(
-      `Replied to /ask command from user ${interaction.user.id} with assistant response, convo length so far: ${result.historyLength} messages`
-    );
   }
 }

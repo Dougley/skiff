@@ -193,7 +193,7 @@ Skills are able to define their own tools in the form of MCP tool servers. When 
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `MCP_CONFIG_PATH` | `mcp.json` | Path to MCP server config |
 | `AIEOS_FILE` | `./agent.aieos.json` | Path to persona file |
-| `GUILD_ID` | -- | Restrict slash command registration to a single guild (faster for dev) |
+| `GUILD_ID` | -- | Restrict command registration to a single guild (faster for dev) |
 | `CONTEXT_WINDOW_SIZE` | `128000` | Max context window size in tokens |
 
 ## Custom Personas

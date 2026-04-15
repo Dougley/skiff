@@ -1,27 +1,27 @@
 import {
-  type ChatInputCommandErrorPayload,
+  type ContextMenuCommandErrorPayload,
   Events,
   Listener,
 } from "@sapphire/framework";
 import { MessageFlags } from "discord.js";
 import { logger } from "../logger/index.js";
 
-export class ChatInputCommandErrorListener extends Listener {
+export class ContextMenuCommandErrorListener extends Listener {
   public constructor(
     context: Listener.LoaderContext,
     options: Listener.Options
   ) {
     super(context, {
       ...options,
-      event: Events.ChatInputCommandError,
+      event: Events.ContextMenuCommandError,
     });
   }
 
   public async run(
     error: Error,
-    { interaction, command }: ChatInputCommandErrorPayload
+    { interaction, command }: ContextMenuCommandErrorPayload
   ) {
-    logger.error(`Chat input command error in /${command.name}`, {
+    logger.error(`Context menu command error in ${command.name}`, {
       err: error,
       userId: interaction.user.id,
       channelId: interaction.channelId,

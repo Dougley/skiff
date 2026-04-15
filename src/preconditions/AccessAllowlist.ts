@@ -1,9 +1,22 @@
 import { Precondition } from "@sapphire/framework";
-import type { ChatInputCommandInteraction } from "discord.js";
+import type {
+  ChatInputCommandInteraction,
+  ContextMenuCommandInteraction,
+} from "discord.js";
 import { checkAccess, getAccessConfig } from "../access/guard.js";
 
 export class AccessAllowlistPrecondition extends Precondition {
   public override chatInputRun(interaction: ChatInputCommandInteraction) {
+    return this.checkInteraction(interaction);
+  }
+
+  public override contextMenuRun(interaction: ContextMenuCommandInteraction) {
+    return this.checkInteraction(interaction);
+  }
+
+  private checkInteraction(
+    interaction: ChatInputCommandInteraction | ContextMenuCommandInteraction
+  ) {
     const result = checkAccess(
       {
         guildId: interaction.guildId,

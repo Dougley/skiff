@@ -4,6 +4,7 @@ import {
   Listener,
   type UserError,
 } from "@sapphire/framework";
+import { MessageFlags } from "discord.js";
 import { logger } from "../logger/index.js";
 
 export class ChatInputCommandDeniedListener extends Listener {
@@ -34,7 +35,7 @@ export class ChatInputCommandDeniedListener extends Listener {
       await interaction.editReply(message).catch(() => {});
     } else {
       await interaction
-        .reply({ content: message, ephemeral: true })
+        .reply({ content: message, flags: MessageFlags.Ephemeral })
         .catch(() => {});
     }
   }

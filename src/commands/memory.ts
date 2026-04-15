@@ -1,5 +1,9 @@
 import { Command } from "@sapphire/framework";
-import { MessageFlags } from "discord.js";
+import {
+  ApplicationIntegrationType,
+  InteractionContextType,
+  MessageFlags,
+} from "discord.js";
 import { and, desc, eq, or, sql } from "drizzle-orm";
 import { db, userFacts } from "../db/index.js";
 import { env } from "../env/index.js";
@@ -11,37 +15,53 @@ export class MemoryCommand extends Command {
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
-    registry.registerChatInputCommand(
-      (builder) => {
-        builder
-          .setName("memory")
-          .setDescription("Manage what the bot remembers about you")
-          .addSubcommand((sub) =>
-            sub
-              .setName("list")
-              .setDescription("View all facts the bot remembers about you")
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("forget")
-              .setDescription("Remove a specific fact by its number")
-              .addIntegerOption((opt) =>
-                opt
-                  .setName("number")
-                  .setDescription("The fact number from /memory list to remove")
-                  .setRequired(true)
-                  .setMinValue(1)
-              )
-          )
-          .addSubcommand((sub) =>
-            sub
-              .setName("forget-all")
-              .setDescription("Remove all facts the bot remembers about you")
-          );
-      },
-      {
-        guildIds: env.GUILD_ID ? [env.GUILD_ID] : undefined,
-      }
+    const buildBase = (builder: import("discord.js").SlashCommandBuilder) =>
+      builder
+        .setName("memory")
+        .setDescription("Manage what the bot remembers about you")
+        .addSubcommand((sub) =>
+          sub
+            .setName("list")
+            .setDescription("View all facts the bot remembers about you")
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName("forget")
+            .setDescription("Remove a specific fact by its number")
+            .addIntegerOption((opt) =>
+              opt
+                .setName("number")
+                .setDescription("The fact number from /memory list to remove")
+                .setRequired(true)
+                .setMinValue(1)
+            )
+        )
+        .addSubcommand((sub) =>
+          sub
+            .setName("forget-all")
+            .setDescription("Remove all facts the bot remembers about you")
+        );
+
+    if (env.GUILD_ID) {
+      registry.registerChatInputCommand((builder) => buildBase(builder), {
+        guildIds: [env.GUILD_ID],
+      });
+    } else {
+      registry.registerChatInputCommand((builder) =>
+        buildBase(builder)
+          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
+          .setContexts([InteractionContextType.Guild])
+      );
+    }
+
+    registry.registerChatInputCommand((builder) =>
+      buildBase(builder)
+        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setContexts([
+          InteractionContextType.Guild,
+          InteractionContextType.BotDM,
+          InteractionContextType.PrivateChannel,
+        ])
     );
   }
 
