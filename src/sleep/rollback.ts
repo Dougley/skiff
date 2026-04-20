@@ -1,5 +1,6 @@
 import { rm } from "node:fs/promises";
-import { eq, inArray } from "drizzle-orm";
+import { resolve, sep } from "node:path";
+import { asc, eq, inArray } from "drizzle-orm";
 import {
   db,
   personaAddenda,
@@ -11,6 +12,16 @@ import { env } from "../env/index.js";
 import { logger } from "../logger/index.js";
 import { reloadSkills } from "../skills/index.js";
 import { refreshAddendaCache } from "./addenda.js";
+
+function isInsideSkillsDir(target: string): boolean {
+  const skillsRoot = resolve(env.SKILLS_DIR);
+  const resolved = resolve(target);
+  if (resolved === skillsRoot) return false;
+  return (
+    resolved.startsWith(`${skillsRoot}${sep}`) ||
+    resolved.startsWith(`${skillsRoot}/`)
+  );
+}
 
 export type RollbackResult = {
   reverted: number;
@@ -43,28 +54,26 @@ async function revertChange(
       return true;
     }
     case "topic_merge": {
-      // Two cases: pair merge (has targetId) or new topic (targetId=null).
-      if (!targetId) {
-        // New-topic creation — no direct undo (we don't know which row was
-        // inserted without more tracking). Best-effort: do nothing.
-        return false;
-      }
-      const loser = (
-        change.before as {
-          loser?: { id: number; summary?: string };
-        }
-      )?.loser;
-      const canonical = (
-        change.before as {
-          canonical?: { id: number; summary?: string };
-        }
-      )?.canonical;
+      if (!targetId) return false;
+      const before = change.before as {
+        loser?: { id: number; summary?: string };
+        canonical?: { id: number; summary?: string; tags?: string[] };
+      } | null;
+      const loser = before?.loser;
+      const canonical = before?.canonical;
       if (!loser || !canonical) return false;
       await db.transaction(async (tx) => {
-        if (canonical.summary) {
+        const restore: {
+          summary?: string;
+          tags?: string[];
+          updatedAt: Date;
+        } = { updatedAt: new Date() };
+        if (canonical.summary) restore.summary = canonical.summary;
+        if (canonical.tags) restore.tags = canonical.tags;
+        if (restore.summary || restore.tags) {
           await tx
             .update(topicKnowledge)
-            .set({ summary: canonical.summary, updatedAt: new Date() })
+            .set(restore)
             .where(eq(topicKnowledge.id, canonical.id));
         }
         await tx
@@ -78,6 +87,14 @@ async function revertChange(
       });
       return true;
     }
+    case "topic_new": {
+      if (!targetId) return false;
+      await db
+        .update(topicKnowledge)
+        .set({ active: false, updatedAt: new Date() })
+        .where(eq(topicKnowledge.id, Number(targetId)));
+      return true;
+    }
     case "persona_addendum": {
       if (!targetId) return false;
       await db
@@ -88,6 +105,13 @@ async function revertChange(
     }
     case "skill_author": {
       if (!targetId) return false;
+      if (!isInsideSkillsDir(targetId)) {
+        logger.warn(
+          "sleep rollback: skill path outside SKILLS_DIR, refusing to delete",
+          { targetId, skillsDir: env.SKILLS_DIR }
+        );
+        return false;
+      }
       try {
         await rm(targetId, { recursive: true, force: true });
         await reloadSkills(env.SKILLS_DIR);
@@ -129,7 +153,8 @@ export async function rollbackRun(runId: number): Promise<RollbackResult> {
   const rows = await db
     .select()
     .from(sleepCycleChanges)
-    .where(eq(sleepCycleChanges.runId, runId));
+    .where(eq(sleepCycleChanges.runId, runId))
+    .orderBy(asc(sleepCycleChanges.id));
   return rollbackChanges(rows);
 }
 

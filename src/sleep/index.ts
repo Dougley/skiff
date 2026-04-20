@@ -1,15 +1,20 @@
-import { and, count, eq, gt, inArray, lte, sql } from "drizzle-orm";
+import { and, count, eq, gt, lte, sql } from "drizzle-orm";
 import { db, messages, sleepCycleSettings } from "../db/index.js";
 import { logger } from "../logger/index.js";
 import { executeDreamPass } from "./run.js";
 
 const TICK_INTERVAL_MS = 5 * 60 * 1000;
-/** Sentinel date used to atomically claim eligible guilds. */
-const CLAIM_SENTINEL = new Date("9999-01-01T00:00:00Z");
 /** Minimum spacing between two runs for the same guild. */
 const MIN_COOLDOWN_MS = 60 * 60 * 1000;
+/**
+ * Lease window for a claimed guild. Short enough that a crashed process
+ * self-heals within a cycle, long enough that a slow dream pass won't be
+ * reclaimed underneath us.
+ */
+const CLAIM_LEASE_MS = 30 * 60 * 1000;
 
 let tickHandle: ReturnType<typeof setInterval> | null = null;
+let ticking = false;
 
 export function startSleepCycle(): void {
   if (tickHandle) return;
@@ -29,6 +34,11 @@ export function stopSleepCycle(): void {
 }
 
 async function tick(): Promise<void> {
+  if (ticking) {
+    logger.debug("sleep: previous tick still running, skipping");
+    return;
+  }
+  ticking = true;
   try {
     const now = new Date();
 
@@ -73,18 +83,31 @@ async function tick(): Promise<void> {
 
     if (toRun.length === 0) return;
 
-    // Claim the eligible rows so overlapping ticks can't double-fire.
-    await db
-      .update(sleepCycleSettings)
-      .set({ nextEligibleAt: CLAIM_SENTINEL })
-      .where(
-        inArray(
-          sleepCycleSettings.guildId,
-          toRun.map((s) => s.guildId)
+    // Atomic claim: push each eligible row's nextEligibleAt out by a lease
+    // window, but only if it's still eligible. `returning` tells us which
+    // rows we actually won; a crashed process self-heals once the lease
+    // expires instead of being stuck forever.
+    const leaseUntil = new Date(now.getTime() + CLAIM_LEASE_MS);
+    const claimedIds = new Set<string>();
+    for (const s of toRun) {
+      const rows = await db
+        .update(sleepCycleSettings)
+        .set({ nextEligibleAt: leaseUntil })
+        .where(
+          and(
+            eq(sleepCycleSettings.guildId, s.guildId),
+            eq(sleepCycleSettings.enabled, true),
+            lte(sleepCycleSettings.nextEligibleAt, now)
+          )
         )
-      );
+        .returning({ guildId: sleepCycleSettings.guildId });
+      if (rows[0]) claimedIds.add(rows[0].guildId);
+    }
+
+    if (claimedIds.size === 0) return;
 
     for (const s of toRun) {
+      if (!claimedIds.has(s.guildId)) continue;
       try {
         await executeDreamPass({
           guildId: s.guildId,
@@ -110,6 +133,8 @@ async function tick(): Promise<void> {
     }
   } catch (err) {
     logger.error("sleep: tick failed", { err });
+  } finally {
+    ticking = false;
   }
 }
 

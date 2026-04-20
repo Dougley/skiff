@@ -118,18 +118,20 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
     return;
   }
 
-  // dryRun=true still logs proposals but writes to a _pending directory that
-  // the loader ignores (only top-level skills/<name> is scanned).
+  // Non-dry-run skills must live as an immediate child of SKILLS_DIR so
+  // discoverSkills picks them up. The `auto-` name prefix is what
+  // identifies them as auto-authored (not the directory). Dry-run goes to
+  // `_auto/_pending/`, which the loader doesn't recurse into.
   const baseRoot = resolve(env.SKILLS_DIR);
-  const authoredRoot = ctx.dryRun
-    ? join(baseRoot, "_auto", "_pending")
-    : join(baseRoot, "_auto");
+  const pendingRoot = join(baseRoot, "_auto", "_pending");
 
   let authored = 0;
   for (const prop of qualified) {
-    const dirName = `${prop.slug}-${ctx.runId}`;
-    const skillDir = join(authoredRoot, dirName);
     const name = `${AUTO_PREFIX}${prop.slug}`;
+    const dirName = `${name}-${ctx.runId}`;
+    const skillDir = ctx.dryRun
+      ? join(pendingRoot, dirName)
+      : join(baseRoot, dirName);
     const frontmatter = [
       "---",
       `name: ${sanitizeFrontmatter(name)}`,

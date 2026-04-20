@@ -12,6 +12,7 @@ export type DreamContext = {
 export type ChangeKind =
   | "persona_addendum"
   | "topic_merge"
+  | "topic_new"
   | "fact_resolve"
   | "skill_author";
 

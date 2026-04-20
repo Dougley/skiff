@@ -182,9 +182,9 @@ export class SleepCycleCommand extends Command {
     interaction: Command.ChatInputCommandInteraction,
     guildId: string
   ) {
-    await this.upsert(guildId, { enabled: true });
+    await this.upsert(guildId, { enabled: true, dryRun: true });
     await interaction.editReply(
-      "Sleep cycle enabled. It starts in dry-run mode — use `/sleep-cycle set-dry-run value:false` to let it mutate state."
+      "Sleep cycle enabled in dry-run mode. Use `/sleep-cycle set-dry-run value:false` to let it mutate state."
     );
   }
 
@@ -326,7 +326,7 @@ export class SleepCycleCommand extends Command {
     const runId = interaction.options.getInteger("run-id") ?? null;
     const changeId = interaction.options.getInteger("change-id") ?? null;
 
-    if (runId === null && changeId === null) {
+    if ((runId === null) === (changeId === null)) {
       await interaction.editReply(
         "Provide exactly one of `run-id` or `change-id`."
       );

@@ -41,7 +41,10 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
       and(
         gt(messages.createdAt, cutoff),
         sql`${messages.userId} is not null`,
-        eq(messages.role, "user")
+        eq(messages.role, "user"),
+        ctx.guildId === null
+          ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
+          : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
       )
     )
     .limit(MAX_USERS);

@@ -157,24 +157,9 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
       continue;
     }
 
-    await logChange({
-      runId: ctx.runId,
-      kind: "topic_merge", // reusing kind for the change log; semantically a "topic_new"
-      targetTable: "topic_knowledge",
-      targetId: null,
-      before: null,
-      after: {
-        new: true,
-        title: synth.title,
-        summary: synth.summary,
-        tags: synth.tags,
-        memberIds: cluster.members.slice(0, 25),
-      },
-    });
-    addStat(ctx, PHASE, "topicsCreated");
-
+    let insertedId: number | null = null;
     if (!ctx.dryRun) {
-      await insertTopicSummary({
+      const inserted = await insertTopicSummary({
         guildId: ctx.guildId,
         createdByUserId: null,
         sourceConversationId: null,
@@ -184,6 +169,22 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
           tags: synth.tags ?? [],
         },
       });
+      insertedId = inserted?.id ?? null;
     }
+
+    await logChange({
+      runId: ctx.runId,
+      kind: "topic_new",
+      targetTable: "topic_knowledge",
+      targetId: insertedId,
+      before: null,
+      after: {
+        title: synth.title,
+        summary: synth.summary,
+        tags: synth.tags,
+        memberIds: cluster.members.slice(0, 25),
+      },
+    });
+    addStat(ctx, PHASE, "topicsCreated");
   }
 }

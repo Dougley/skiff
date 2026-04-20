@@ -115,6 +115,15 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
         continue;
       }
 
+      if (merged.canonicalId !== a.id && merged.canonicalId !== b.id) {
+        logger.warn("sleep: dedupe-topics LLM returned unknown canonical id", {
+          aId: a.id,
+          bId: b.id,
+          canonicalId: merged.canonicalId,
+        });
+        continue;
+      }
+
       const canonical = merged.canonicalId === b.id ? b : a;
       const loser = merged.canonicalId === b.id ? a : b;
 
@@ -124,7 +133,11 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
         targetTable: "topic_knowledge",
         targetId: canonical.id,
         before: {
-          canonical: { id: canonical.id, summary: canonical.summary },
+          canonical: {
+            id: canonical.id,
+            summary: canonical.summary,
+            tags: canonical.tags ?? [],
+          },
           loser: { id: loser.id, title: loser.title, summary: loser.summary },
         },
         after: {
