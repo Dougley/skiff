@@ -142,19 +142,31 @@ async function revertChange(
     }
     case "topic_new": {
       if (!targetId) return false;
-      await db
+      const updated = await db
         .update(topicKnowledge)
         .set({ active: false, updatedAt: new Date() })
-        .where(eq(topicKnowledge.id, Number(targetId)));
-      return true;
+        .where(
+          and(
+            eq(topicKnowledge.id, Number(targetId)),
+            eq(topicKnowledge.active, true)
+          )
+        )
+        .returning({ id: topicKnowledge.id });
+      return updated.length > 0;
     }
     case "persona_addendum": {
       if (!targetId) return false;
-      await db
+      const updated = await db
         .update(personaAddenda)
         .set({ active: false, retiredAt: new Date() })
-        .where(eq(personaAddenda.id, Number(targetId)));
-      return true;
+        .where(
+          and(
+            eq(personaAddenda.id, Number(targetId)),
+            eq(personaAddenda.active, true)
+          )
+        )
+        .returning({ id: personaAddenda.id });
+      return updated.length > 0;
     }
     case "skill_author": {
       if (!targetId) return false;

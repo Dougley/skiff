@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { generateObject } from "ai";
 import { and, desc, gt, sql } from "drizzle-orm";
+import yaml from "js-yaml";
 import { z } from "zod";
 import { db, messages } from "../../db/index.js";
 import { env } from "../../env/index.js";
@@ -39,11 +40,6 @@ const proposalSchema = z.object({
     )
     .default([]),
 });
-
-function sanitizeFrontmatter(value: string): string {
-  // Strip any accidental YAML-breaking characters from the slug/description.
-  return value.replace(/["\n\r]/g, "").trim();
-}
 
 /**
  * Detect recurring user-request patterns and (if allowed) write new skill
@@ -108,9 +104,15 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
     return;
   }
 
+  const seenSlugs = new Set<string>();
   const qualified = result.proposals
     .filter((p) => p.confidence >= MIN_CONFIDENCE)
     .filter((p) => !existing.includes(`${AUTO_PREFIX}${p.slug}`))
+    .filter((p) => {
+      if (seenSlugs.has(p.slug)) return false;
+      seenSlugs.add(p.slug);
+      return true;
+    })
     .slice(0, 2);
 
   if (qualified.length === 0) {
@@ -118,39 +120,42 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
     return;
   }
 
-  // Non-dry-run skills must live as an immediate child of SKILLS_DIR so
+  // Authored skills must live as an immediate child of SKILLS_DIR so
   // discoverSkills picks them up. The `auto-` name prefix is what
-  // identifies them as auto-authored (not the directory). Dry-run goes to
-  // `_auto/_pending/`, which the loader doesn't recurse into.
+  // identifies them as auto-authored (not the directory). Dry-run mode
+  // records the proposal via logChange but never touches the filesystem.
   const baseRoot = resolve(env.SKILLS_DIR);
-  const pendingRoot = join(baseRoot, "_auto", "_pending");
 
   let authored = 0;
   for (const prop of qualified) {
     const name = `${AUTO_PREFIX}${prop.slug}`;
     const dirName = `${name}-${ctx.runId}`;
-    const skillDir = ctx.dryRun
-      ? join(pendingRoot, dirName)
-      : join(baseRoot, dirName);
-    const frontmatter = [
-      "---",
-      `name: ${sanitizeFrontmatter(name)}`,
-      `description: ${sanitizeFrontmatter(prop.description)}`,
-      `version: 0.1.0-run${ctx.runId}`,
-      "---",
-      "",
-    ].join("\n");
+    const skillDir = join(baseRoot, dirName);
+    const frontmatter = `---\n${yaml.dump(
+      {
+        name,
+        description: prop.description,
+        version: `0.1.0-run${ctx.runId}`,
+      },
+      { lineWidth: -1 }
+    )}---\n`;
     const body = `# ${prop.title}\n\n<!-- auto-authored by sleep cycle run ${ctx.runId} -->\n\n${prop.body}\n`;
 
-    try {
-      await mkdir(skillDir, { recursive: true });
-      await writeFile(join(skillDir, "SKILL.md"), frontmatter + body, "utf-8");
-    } catch (err) {
-      logger.warn("sleep: failed to write authored skill", {
-        slug: prop.slug,
-        err,
-      });
-      continue;
+    if (!ctx.dryRun) {
+      try {
+        await mkdir(skillDir, { recursive: true });
+        await writeFile(
+          join(skillDir, "SKILL.md"),
+          frontmatter + body,
+          "utf-8"
+        );
+      } catch (err) {
+        logger.warn("sleep: failed to write authored skill", {
+          slug: prop.slug,
+          err,
+        });
+        continue;
+      }
     }
 
     await logChange({

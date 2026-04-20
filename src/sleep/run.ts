@@ -19,7 +19,7 @@ export type RunOptions = {
 
 export type RunResult = {
   runId: number;
-  status: "succeeded" | "failed" | "skipped";
+  status: "succeeded" | "failed";
   phaseStats: Record<string, Record<string, number>>;
   error?: string;
 };
