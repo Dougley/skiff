@@ -1,0 +1,179 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { generateObject } from "ai";
+import { and, desc, gt, sql } from "drizzle-orm";
+import { z } from "zod";
+import { db, messages } from "../../db/index.js";
+import { env } from "../../env/index.js";
+import { getLLMProvider } from "../../llm/provider.js";
+import { logger } from "../../logger/index.js";
+import { getAllSkills, reloadSkills } from "../../skills/index.js";
+import { addStat, type DreamContext, logChange } from "../context.js";
+
+const PHASE = "propose_skills";
+const LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_USER_MESSAGES = 200;
+const MIN_CONFIDENCE = 75;
+const AUTO_PREFIX = "auto-";
+
+const proposalSchema = z.object({
+  proposals: z
+    .array(
+      z.object({
+        slug: z
+          .string()
+          .regex(/^[a-z0-9-]+$/, "lowercase, hyphen, digits only")
+          .min(3)
+          .max(40)
+          .describe("URL-safe slug. Will be prefixed with 'auto-'."),
+        title: z.string().min(1),
+        description: z.string().min(1).max(200),
+        body: z
+          .string()
+          .min(40)
+          .describe(
+            "Markdown instructions the LLM will be given when this skill is activated."
+          ),
+        confidence: z.number().min(0).max(100),
+      })
+    )
+    .default([]),
+});
+
+function sanitizeFrontmatter(value: string): string {
+  // Strip any accidental YAML-breaking characters from the slug/description.
+  return value.replace(/["\n\r]/g, "").trim();
+}
+
+/**
+ * Detect recurring user-request patterns and (if allowed) write new skill
+ * markdown files to disk. Every authored skill is prefixed with `auto-` so
+ * it can never be confused with a hand-written skill.
+ */
+export async function proposeSkills(ctx: DreamContext): Promise<void> {
+  const cutoff = new Date(ctx.now.getTime() - LOOKBACK_MS);
+
+  const userMessages = await db
+    .select({
+      content: messages.content,
+      createdAt: messages.createdAt,
+    })
+    .from(messages)
+    .where(
+      and(
+        gt(messages.createdAt, cutoff),
+        sql`${messages.role} = 'user'`,
+        sql`${messages.content} is not null`,
+        ctx.guildId === null
+          ? sql`1 = 1`
+          : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
+      )
+    )
+    .orderBy(desc(messages.createdAt))
+    .limit(MAX_USER_MESSAGES);
+
+  if (userMessages.length < 20) {
+    addStat(ctx, PHASE, "skippedLowSignal");
+    return;
+  }
+  addStat(ctx, PHASE, "messagesConsidered", userMessages.length);
+
+  const existing = getAllSkills().map((s) => s.manifest.name);
+
+  const modelId = env.MEMORY_EXTRACT_MODEL ?? env.LLM_DEFAULT_MODEL;
+  if (modelId === "disabled") return;
+
+  let result: z.infer<typeof proposalSchema>;
+  try {
+    const r = await generateObject({
+      model: getLLMProvider(undefined, modelId),
+      schema: proposalSchema,
+      prompt: [
+        "Scan these recent user requests for recurring task patterns that a focused skill could serve better than a generic response.",
+        "Only propose skills for patterns you see at least 3 times. Don't propose skills that duplicate what already exists.",
+        `Existing skills (do not duplicate): ${existing.join(", ") || "(none)"}`,
+        "",
+        "Return at most 2 high-confidence proposals. Each 'body' should be concrete markdown instructions — how to approach the request, what tools to prefer, what pitfalls to avoid.",
+        "",
+        "Recent user messages:",
+        ...userMessages
+          .slice(0, 80)
+          .map((m, i) => `[${i + 1}] ${(m.content ?? "").slice(0, 300)}`),
+      ].join("\n"),
+      maxRetries: 1,
+    });
+    result = r.object;
+  } catch (err) {
+    logger.warn("sleep: propose-skills LLM failed", { err });
+    return;
+  }
+
+  const qualified = result.proposals
+    .filter((p) => p.confidence >= MIN_CONFIDENCE)
+    .filter((p) => !existing.includes(`${AUTO_PREFIX}${p.slug}`))
+    .slice(0, 2);
+
+  if (qualified.length === 0) {
+    addStat(ctx, PHASE, "noQualifying");
+    return;
+  }
+
+  // dryRun=true still logs proposals but writes to a _pending directory that
+  // the loader ignores (only top-level skills/<name> is scanned).
+  const baseRoot = resolve(env.SKILLS_DIR);
+  const authoredRoot = ctx.dryRun
+    ? join(baseRoot, "_auto", "_pending")
+    : join(baseRoot, "_auto");
+
+  let authored = 0;
+  for (const prop of qualified) {
+    const dirName = `${prop.slug}-${ctx.runId}`;
+    const skillDir = join(authoredRoot, dirName);
+    const name = `${AUTO_PREFIX}${prop.slug}`;
+    const frontmatter = [
+      "---",
+      `name: ${sanitizeFrontmatter(name)}`,
+      `description: ${sanitizeFrontmatter(prop.description)}`,
+      `version: 0.1.0-run${ctx.runId}`,
+      "---",
+      "",
+    ].join("\n");
+    const body = `# ${prop.title}\n\n<!-- auto-authored by sleep cycle run ${ctx.runId} -->\n\n${prop.body}\n`;
+
+    try {
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, "SKILL.md"), frontmatter + body, "utf-8");
+    } catch (err) {
+      logger.warn("sleep: failed to write authored skill", {
+        slug: prop.slug,
+        err,
+      });
+      continue;
+    }
+
+    await logChange({
+      runId: ctx.runId,
+      kind: "skill_author",
+      targetTable: "filesystem",
+      targetId: skillDir,
+      before: null,
+      after: {
+        name,
+        description: prop.description,
+        title: prop.title,
+        confidence: prop.confidence,
+        dryRun: ctx.dryRun,
+      },
+    });
+    authored++;
+    addStat(ctx, PHASE, ctx.dryRun ? "proposalsPending" : "skillsAuthored");
+  }
+
+  if (authored > 0 && !ctx.dryRun) {
+    try {
+      await reloadSkills(env.SKILLS_DIR);
+    } catch (err) {
+      logger.warn("sleep: reloadSkills after authoring failed", { err });
+    }
+  }
+}

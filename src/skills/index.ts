@@ -14,6 +14,16 @@ export async function initSkills(skillsDir: string): Promise<void> {
 }
 
 /**
+ * Rediscover skills and atomically swap the cache. Used by the sleep cycle
+ * after authoring new skills on disk, and by rollback when deleting them.
+ */
+export async function reloadSkills(skillsDir: string): Promise<void> {
+  const next = await discoverSkills(skillsDir);
+  cachedSkills = next;
+  logger.info(`Skills reloaded: ${next.length}`);
+}
+
+/**
  * Lightweight catalog for the system prompt — name and description only.
  */
 export function getSkillCatalog(): { name: string; description: string }[] {
@@ -21,6 +31,14 @@ export function getSkillCatalog(): { name: string; description: string }[] {
     name: s.manifest.name,
     description: s.manifest.description,
   }));
+}
+
+/**
+ * Snapshot of all currently loaded skills. Used by the sleep cycle's
+ * propose-skills phase to avoid authoring duplicates.
+ */
+export function getAllSkills(): LoadedSkill[] {
+  return cachedSkills;
 }
 
 /**

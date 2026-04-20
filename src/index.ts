@@ -14,6 +14,8 @@ import { startHeartbeat, stopHeartbeat } from "./heartbeat/index.js";
 import { colors, logger } from "./logger/index.js";
 import { startScheduler, stopScheduler } from "./scheduler/index.js";
 import { initSkills } from "./skills/index.js";
+import { loadAddendaCache } from "./sleep/addenda.js";
+import { startSleepCycle, stopSleepCycle } from "./sleep/index.js";
 import { closeMCPClients } from "./tools/mcp.js";
 
 function printBanner(metrics: {
@@ -71,6 +73,7 @@ async function main() {
   await initSkills(env.SKILLS_DIR);
 
   await runMigrations();
+  await loadAddendaCache();
   await startClient();
 
   // Wait for the client ready event (guild cache populated)
@@ -100,6 +103,7 @@ async function main() {
   // Start both scheduler (for cron tasks) and heartbeat (for periodic checks)
   startScheduler(ready);
   startHeartbeat(ready);
+  startSleepCycle();
 }
 
 function registerShutdownHandlers() {
@@ -113,6 +117,7 @@ function registerShutdownHandlers() {
     try {
       stopScheduler();
       stopHeartbeat();
+      stopSleepCycle();
       await closeMCPClients();
       await pgClient.close().catch((err: unknown) => {
         logger.warn("Failed to close database", { err });

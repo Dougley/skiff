@@ -180,6 +180,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   const system = getSystemPrompt({
     userFacts,
     messageContext: ctx.messageContext,
+    guildId: toolContext.guildId,
   });
 
   logger.debug("chat: starting turn", {

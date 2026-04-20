@@ -47,7 +47,7 @@ export function createAIEOSTools() {
     }),
     set_aieos_part: tool({
       description:
-        "Set or update a part of the AIEOS file by its ID. Use this when you need to modify the AIEOS instructions or information during a conversation.",
+        "Set or update an AIEOS part for the current turn only. Changes are in-memory and wiped on restart — this is for short-lived tone shifts, not durable growth. For lasting self-knowledge, wait for the sleep cycle to write a persona addendum.",
       inputSchema: z.object({
         partId: z
           .enum(aieosPartIds, {
