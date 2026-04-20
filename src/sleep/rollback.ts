@@ -1,6 +1,6 @@
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import {
   db,
   personaAddenda,
@@ -41,16 +41,45 @@ async function revertChange(
   const targetId = change.targetId;
   switch (change.kind) {
     case "fact_resolve": {
-      const retireIds = (change.before as { retireIds?: number[] })?.retireIds;
-      if (!retireIds || retireIds.length === 0) return false;
-      await db
+      const before = change.before as {
+        retireIds?: number[];
+        keepId?: number;
+      } | null;
+      const retireIds = before?.retireIds;
+      const keepId = before?.keepId;
+      if (!retireIds || retireIds.length === 0 || keepId === undefined) {
+        return false;
+      }
+      // Only flip rows that are still superseded by the same keepId we
+      // retired them under. If a later run resolved them again under a
+      // different canonical, leave them alone — otherwise we'd resurrect
+      // stale state.
+      const updated = await db
         .update(userFacts)
         .set({
           active: true,
           supersededBy: null,
           updatedAt: new Date(),
         })
-        .where(inArray(userFacts.id, retireIds));
+        .where(
+          and(
+            inArray(userFacts.id, retireIds),
+            eq(userFacts.active, false),
+            eq(userFacts.supersededBy, keepId)
+          )
+        )
+        .returning({ id: userFacts.id });
+      if (updated.length === 0) return false;
+      if (updated.length < retireIds.length) {
+        logger.info(
+          "sleep rollback: fact_resolve partially reverted (some facts moved)",
+          {
+            requested: retireIds.length,
+            actual: updated.length,
+            keepId,
+          }
+        );
+      }
       return true;
     }
     case "topic_merge": {
@@ -59,10 +88,18 @@ async function revertChange(
         loser?: { id: number; summary?: string };
         canonical?: { id: number; summary?: string; tags?: string[] };
       } | null;
+      const after = change.after as {
+        mergedSummary?: string;
+        mergedTags?: string[];
+      } | null;
       const loser = before?.loser;
       const canonical = before?.canonical;
       if (!loser || !canonical) return false;
+      let didAnything = false;
       await db.transaction(async (tx) => {
+        // Only restore canonical fields if they still hold the values we set
+        // during the merge — otherwise a later run has updated them and we'd
+        // clobber newer state.
         const restore: {
           summary?: string;
           tags?: string[];
@@ -71,21 +108,37 @@ async function revertChange(
         if (canonical.summary) restore.summary = canonical.summary;
         if (canonical.tags) restore.tags = canonical.tags;
         if (restore.summary || restore.tags) {
-          await tx
+          const conds = [eq(topicKnowledge.id, canonical.id)];
+          if (after?.mergedSummary) {
+            conds.push(eq(topicKnowledge.summary, after.mergedSummary));
+          }
+          const restored = await tx
             .update(topicKnowledge)
             .set(restore)
-            .where(eq(topicKnowledge.id, canonical.id));
+            .where(and(...conds))
+            .returning({ id: topicKnowledge.id });
+          if (restored.length > 0) didAnything = true;
         }
-        await tx
+        // Only reactivate the loser if it's still inactive AND superseded by
+        // the canonical we set.
+        const loserUpdated = await tx
           .update(topicKnowledge)
           .set({
             active: true,
             supersededBy: null,
             updatedAt: new Date(),
           })
-          .where(eq(topicKnowledge.id, loser.id));
+          .where(
+            and(
+              eq(topicKnowledge.id, loser.id),
+              eq(topicKnowledge.active, false),
+              eq(topicKnowledge.supersededBy, canonical.id)
+            )
+          )
+          .returning({ id: topicKnowledge.id });
+        if (loserUpdated.length > 0) didAnything = true;
       });
-      return true;
+      return didAnything;
     }
     case "topic_new": {
       if (!targetId) return false;

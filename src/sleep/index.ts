@@ -1,5 +1,5 @@
-import { and, count, eq, gt, lte, sql } from "drizzle-orm";
-import { db, messages, sleepCycleSettings } from "../db/index.js";
+import { and, eq, lte, sql } from "drizzle-orm";
+import { db, sleepCycleSettings } from "../db/index.js";
 import { logger } from "../logger/index.js";
 import { executeDreamPass } from "./run.js";
 
@@ -54,22 +54,35 @@ async function tick(): Promise<void> {
 
     if (eligible.length === 0) return;
 
-    const toRun: typeof eligible = [];
+    // Activity gate: skip guilds whose channels have been active in the
+    // recent window. Compute per-guild counts in one query (grouped over a
+    // VALUES table of (guildId, cutoff)) so this stays O(1) DB roundtrips
+    // regardless of how many guilds opted in.
+    const cutoffPairs = eligible.map(
+      (s) =>
+        sql`(${s.guildId}::text, to_timestamp(${Math.floor(
+          (now.getTime() - s.lowActivityMinutes * 60 * 1000) / 1000
+        )}))`
+    );
+    const valuesClause = sql.join(cutoffPairs, sql`, `);
+    const activityResult = await db.execute(sql`
+      select s.guild_id as "guildId",
+             count(m.id)::int as "n"
+      from (values ${valuesClause}) as s(guild_id, cutoff)
+      left join conversations c on c.guild_id = s.guild_id
+      left join messages m on m.conversation_id = c.id and m.created_at > s.cutoff
+      group by s.guild_id
+    `);
+    const activityRows = (
+      activityResult as unknown as { rows: { guildId: string; n: number }[] }
+    ).rows;
+    const counts = new Map<string, number>(
+      activityRows.map((r) => [r.guildId, Number(r.n)])
+    );
 
+    const toRun: typeof eligible = [];
     for (const s of eligible) {
-      // Activity gate: skip guilds whose channels have been active in the
-      // recent window. We only run dream passes when the guild is quiet.
-      const cutoff = new Date(now.getTime() - s.lowActivityMinutes * 60 * 1000);
-      const [activity] = await db
-        .select({ n: count() })
-        .from(messages)
-        .where(
-          and(
-            gt(messages.createdAt, cutoff),
-            sql`${messages.conversationId} in (select id from conversations where guild_id = ${s.guildId})`
-          )
-        );
-      const activeCount = activity?.n ?? 0;
+      const activeCount = counts.get(s.guildId) ?? 0;
       if (activeCount > s.minInactiveMessages) {
         logger.debug("sleep: guild still active, deferring", {
           guildId: s.guildId,

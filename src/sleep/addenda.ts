@@ -61,15 +61,26 @@ export async function loadAddendaCache(): Promise<void> {
 }
 
 /**
+ * Max addenda injected into any single system prompt, per scope. Protects
+ * prompt token budget from unbounded growth as the bot grows into itself.
+ * Entries are ordered oldest→newest, so we take the most recent N.
+ */
+const MAX_ADDENDA_PER_SCOPE = 15;
+
+/**
  * Sync getter used by `getSystemPrompt`. Returns separate global/guild buckets
- * so callers can render them distinctly if they want.
+ * so callers can render them distinctly if they want. Caps each bucket to
+ * keep prompt size bounded.
  */
 export function getActiveAddenda(guildId?: string | null): {
   global: string[];
   guild: string[];
 } {
-  const guild = guildId ? (cache.byGuild.get(guildId) ?? []) : [];
-  return { global: cache.global, guild };
+  const guildAll = guildId ? (cache.byGuild.get(guildId) ?? []) : [];
+  return {
+    global: cache.global.slice(-MAX_ADDENDA_PER_SCOPE),
+    guild: guildAll.slice(-MAX_ADDENDA_PER_SCOPE),
+  };
 }
 
 /**

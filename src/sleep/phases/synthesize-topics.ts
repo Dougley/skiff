@@ -44,6 +44,11 @@ const synthSchema = z.object({
  * topic), synthesize a new topic summary and insert it.
  */
 export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
+  // Gate the LLM dependency up front so we don't burn CPU on clustering when
+  // we can't synthesize anyway.
+  const modelId = env.MEMORY_EXTRACT_MODEL ?? env.LLM_DEFAULT_MODEL;
+  if (modelId === "disabled") return;
+
   const cutoff = new Date(ctx.now.getTime() - LOOKBACK_MS);
 
   const rows = await db
@@ -65,9 +70,14 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
     .orderBy(desc(messageEmbeddings.createdAt))
     .limit(MAX_SAMPLES);
 
-  const usable = rows.filter((r) => Array.isArray(r.embedding));
+  const usable = rows.filter((r): r is typeof r & { embedding: number[] } =>
+    Array.isArray(r.embedding)
+  );
   if (usable.length < MIN_CLUSTER_SIZE) return;
   addStat(ctx, PHASE, "samplesConsidered", usable.length);
+
+  // Index by id once so the per-cluster lookups are O(1) instead of O(n).
+  const byId = new Map(usable.map((u) => [u.id, u]));
 
   // Load existing topics for this guild to suppress duplicates of known subjects.
   const existingTopics = await db
@@ -86,15 +96,20 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
       )
     );
 
+  // Suppression set we extend as we go so two clusters in the same run don't
+  // both create the same new topic.
+  const suppressEmbeddings: number[][] = existingTopics
+    .map((t) => t.embedding)
+    .filter((e): e is number[] => Array.isArray(e));
+
   const assigned = new Set<number>();
   const clusters: { seed: number; members: number[] }[] = [];
 
   for (const seed of usable) {
-    if (assigned.has(seed.id) || !seed.embedding) continue;
+    if (assigned.has(seed.id)) continue;
     const members: number[] = [seed.id];
     for (const other of usable) {
-      if (other.id === seed.id || assigned.has(other.id) || !other.embedding)
-        continue;
+      if (other.id === seed.id || assigned.has(other.id)) continue;
       if (cosine(seed.embedding, other.embedding) >= CLUSTER_THRESHOLD) {
         members.push(other.id);
       }
@@ -110,25 +125,20 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
   if (clusters.length === 0) return;
 
   for (const cluster of clusters) {
-    const seedEmbedding = usable.find((u) => u.id === cluster.seed)?.embedding;
+    const seedEmbedding = byId.get(cluster.seed)?.embedding;
     if (!seedEmbedding) continue;
 
-    // Skip if a similar topic already exists.
-    const duplicate = existingTopics.some(
-      (t) =>
-        t.embedding &&
-        cosine(t.embedding, seedEmbedding) >= NEW_TOPIC_OVERLAP_THRESHOLD
+    // Skip if a similar topic already exists (or was just synthesized this run).
+    const duplicate = suppressEmbeddings.some(
+      (e) => cosine(e, seedEmbedding) >= NEW_TOPIC_OVERLAP_THRESHOLD
     );
     if (duplicate) {
       addStat(ctx, PHASE, "clustersSkippedDup");
       continue;
     }
 
-    const modelId = env.MEMORY_EXTRACT_MODEL ?? env.LLM_DEFAULT_MODEL;
-    if (modelId === "disabled") return;
-
     const excerpts = cluster.members
-      .map((id) => usable.find((u) => u.id === id)?.content ?? "")
+      .map((id) => byId.get(id)?.content ?? "")
       .filter(Boolean)
       .slice(0, 12)
       .map((c, i) => `[${i + 1}] ${c.slice(0, 400)}`);
@@ -186,5 +196,9 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
       },
     });
     addStat(ctx, PHASE, "topicsCreated");
+    // Suppress further clusters in this run that would re-synthesize the
+    // same topic. Best-effort — uses the cluster seed embedding as proxy
+    // since we don't re-embed the synthesized title here.
+    suppressEmbeddings.push(seedEmbedding);
   }
 }
