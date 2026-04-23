@@ -92,6 +92,40 @@ export const environmentVariableSchema = z.object({
   TOOL_DM_RULES: z.string().default(""),
   TOOL_USER_RULES: z.string().default(""),
   SKILLS_DIR: z.string().default("./skills"),
+  SLEEP_CONSOLIDATE_LOOKBACK_DAYS: z.coerce.number().int().min(1).default(30),
+  SLEEP_CONSOLIDATE_MAX_USERS: z.coerce.number().int().min(1).default(10),
+  SLEEP_CONSOLIDATE_MIN_FACTS: z.coerce.number().int().min(1).default(2),
+  SLEEP_DEDUPE_SIMILARITY: z.coerce.number().min(0).max(1).default(0.9),
+  SLEEP_MAX_TOPICS: z.coerce.number().int().min(10).default(200),
+  SLEEP_MAX_MERGES_PER_RUN: z.coerce.number().int().min(1).default(20),
+  SLEEP_CLUSTER_THRESHOLD: z.coerce.number().min(0).max(1).default(0.85),
+  SLEEP_MIN_CLUSTER_SIZE: z.coerce.number().int().min(2).default(5),
+  SLEEP_MAX_CLUSTERS_PER_RUN: z.coerce.number().int().min(1).default(3),
+  SLEEP_MAX_SAMPLES: z.coerce.number().int().min(10).default(500),
+  SLEEP_NEW_TOPIC_OVERLAP_THRESHOLD: z.coerce
+    .number()
+    .min(0)
+    .max(1)
+    .default(0.85),
+  SLEEP_SYNTHESIZE_LOOKBACK_DAYS: z.coerce.number().int().min(1).default(7),
+  SLEEP_REFLECT_LOOKBACK_DAYS: z.coerce.number().int().min(1).default(14),
+  SLEEP_REFLECT_MAX_MESSAGES: z.coerce.number().int().min(10).default(120),
+  SLEEP_REFLECT_MIN_CONFIDENCE: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(70),
+  SLEEP_REFLECT_MAX_ADDENDA_PER_RUN: z.coerce.number().int().min(1).default(3),
+  SLEEP_PROPOSE_LOOKBACK_DAYS: z.coerce.number().int().min(1).default(7),
+  SLEEP_PROPOSE_MAX_USER_MESSAGES: z.coerce.number().int().min(10).default(200),
+  SLEEP_PROPOSE_MIN_CONFIDENCE: z.coerce
+    .number()
+    .int()
+    .min(0)
+    .max(100)
+    .default(75),
+  SLEEP_MAX_ADDENDA_PER_SCOPE: z.coerce.number().int().min(1).default(15),
 });
 
 export type EnvironmentVariables = z.infer<typeof environmentVariableSchema>;

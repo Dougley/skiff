@@ -184,6 +184,33 @@ Skills are able to define their own tools in the form of MCP tool servers. When 
 |----------|---------|-------------|
 | `SKILLS_DIR` | `./skills` | Directory to scan for skills |
 
+### Sleep Cycle (Dream Pass)
+
+The sleep cycle is a background maintenance system that runs during idle periods. It consolidates memories, deduplicates knowledge, evolves the persona, and can auto-author new skills. Enabled per-guild via the `/sleep-cycle enable` Discord command. Runs in dry-run mode by default (changes are logged but not applied).
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SLEEP_CONSOLIDATE_LOOKBACK_DAYS` | `30` | Days of user activity to scan for fact consolidation |
+| `SLEEP_CONSOLIDATE_MAX_USERS` | `10` | Max users to process per pass |
+| `SLEEP_CONSOLIDATE_MIN_FACTS` | `2` | Minimum facts per user to trigger consolidation |
+| `SLEEP_DEDUPE_SIMILARITY` | `0.9` | Cosine similarity threshold for topic deduplication (0-1) |
+| `SLEEP_MAX_TOPICS` | `200` | Max topics to scan for deduplication |
+| `SLEEP_MAX_MERGES_PER_RUN` | `20` | Max topic merges per pass |
+| `SLEEP_CLUSTER_THRESHOLD` | `0.85` | Cosine similarity threshold for message clustering (0-1) |
+| `SLEEP_MIN_CLUSTER_SIZE` | `5` | Minimum messages in a cluster to synthesize a new topic |
+| `SLEEP_MAX_CLUSTERS_PER_RUN` | `3` | Max new topics to synthesize per pass |
+| `SLEEP_MAX_SAMPLES` | `500` | Max message embeddings to consider for clustering |
+| `SLEEP_NEW_TOPIC_OVERLAP_THRESHOLD` | `0.85` | Skip clusters that overlap existing topics above this threshold (0-1) |
+| `SLEEP_SYNTHESIZE_LOOKBACK_DAYS` | `7` | Days of messages to scan for topic synthesis |
+| `SLEEP_REFLECT_LOOKBACK_DAYS` | `14` | Days of messages to reflect on for persona growth |
+| `SLEEP_REFLECT_MAX_MESSAGES` | `120` | Max messages to include in persona reflection |
+| `SLEEP_REFLECT_MIN_CONFIDENCE` | `70` | Minimum confidence (0-100) for a persona note to be kept |
+| `SLEEP_REFLECT_MAX_ADDENDA_PER_RUN` | `3` | Max persona notes to generate per pass |
+| `SLEEP_PROPOSE_LOOKBACK_DAYS` | `7` | Days of user messages to scan for skill proposals |
+| `SLEEP_PROPOSE_MAX_USER_MESSAGES` | `200` | Max user messages to consider for skill proposals |
+| `SLEEP_PROPOSE_MIN_CONFIDENCE` | `75` | Minimum confidence (0-100) for a skill proposal to be kept |
+| `SLEEP_MAX_ADDENDA_PER_SCOPE` | `15` | Max persona addenda injected into a single system prompt |
+
 ### General
 
 | Variable | Default | Description |
