@@ -43,6 +43,13 @@
       "when": 1776161205376,
       "tag": "0005_hard_alex_wilder",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1776955757539,
+      "tag": "0006_tiresome_proteus",
+      "breakpoints": true
     }
   ]
 }

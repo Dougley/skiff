@@ -124,6 +124,8 @@ export const topicKnowledge = pgTable(
     ),
     embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
     active: boolean("active").default(true).notNull(),
+    // Self-ref: set when a dedup pass merges this topic into another
+    supersededBy: integer("superseded_by"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -167,6 +169,88 @@ export const heartbeatChannels = pgTable("heartbeat_channels", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+// sleep cycle — per-guild settings gating the background "dream" pass
+export const sleepCycleSettings = pgTable("sleep_cycle_settings", {
+  guildId: text("guild_id").primaryKey(),
+  enabled: boolean("enabled").default(false).notNull(),
+  dryRun: boolean("dry_run").default(true).notNull(),
+  autoAuthorSkills: boolean("auto_author_skills").default(false).notNull(),
+  lowActivityMinutes: integer("low_activity_minutes").default(60).notNull(),
+  minInactiveMessages: integer("min_inactive_messages").default(3).notNull(),
+  maxRunsPerDay: integer("max_runs_per_day").default(2).notNull(),
+  lastRunAt: timestamp("last_run_at"),
+  nextEligibleAt: timestamp("next_eligible_at").defaultNow().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// sleep cycle — audit log, one row per dream pass
+export const sleepCycleRuns = pgTable(
+  "sleep_cycle_runs",
+  {
+    id: serial("id").primaryKey(),
+    guildId: text("guild_id"),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+    status: text("status").default("running").notNull(), // running|succeeded|failed|skipped
+    phaseStats: jsonb("phase_stats").$type<Record<string, unknown>>(),
+    tokenCost: integer("token_cost"),
+    triggerReason: text("trigger_reason"), // "scheduled" | "manual" | "test"
+    dryRun: boolean("dry_run").default(false).notNull(),
+    error: text("error"),
+  },
+  (t) => [
+    index("idx_sleep_runs_guild").on(t.guildId),
+    index("idx_sleep_runs_started").on(t.startedAt),
+  ]
+);
+
+// sleep cycle — fine-grained change log for rollback/review
+export const sleepCycleChanges = pgTable(
+  "sleep_cycle_changes",
+  {
+    id: serial("id").primaryKey(),
+    runId: integer("run_id")
+      .notNull()
+      .references(() => sleepCycleRuns.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // persona_addendum|topic_merge|fact_resolve|skill_author
+    targetTable: text("target_table"),
+    targetId: text("target_id"),
+    before: jsonb("before").$type<Record<string, unknown> | null>(),
+    after: jsonb("after").$type<Record<string, unknown> | null>(),
+    reverted: boolean("reverted").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_sleep_changes_run").on(t.runId),
+    index("idx_sleep_changes_kind").on(t.kind),
+  ]
+);
+
+// sleep cycle — durable persona addenda that survive restart
+export const personaAddenda = pgTable(
+  "persona_addenda",
+  {
+    id: serial("id").primaryKey(),
+    guildId: text("guild_id"), // null = global
+    target: text("target"), // null = free-form; else a dotted AIEOS path
+    text: text("text").notNull(),
+    reason: text("reason"),
+    sourceRunId: integer("source_run_id").references(() => sleepCycleRuns.id, {
+      onDelete: "set null",
+    }),
+    confidence: integer("confidence").default(80).notNull(),
+    active: boolean("active").default(true).notNull(),
+    supersededBy: integer("superseded_by"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    retiredAt: timestamp("retired_at"),
+  },
+  (t) => [
+    index("idx_persona_addenda_guild").on(t.guildId),
+    index("idx_persona_addenda_active").on(t.active),
+  ]
+);
+
 // Types
 export type Conversation = typeof conversations.$inferSelect;
 export type NewConversation = typeof conversations.$inferInsert;
@@ -178,3 +262,11 @@ export type NewUserFact = typeof userFacts.$inferInsert;
 export type TopicKnowledge = typeof topicKnowledge.$inferSelect;
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
 export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
+export type SleepCycleSettings = typeof sleepCycleSettings.$inferSelect;
+export type NewSleepCycleSettings = typeof sleepCycleSettings.$inferInsert;
+export type SleepCycleRun = typeof sleepCycleRuns.$inferSelect;
+export type NewSleepCycleRun = typeof sleepCycleRuns.$inferInsert;
+export type SleepCycleChange = typeof sleepCycleChanges.$inferSelect;
+export type NewSleepCycleChange = typeof sleepCycleChanges.$inferInsert;
+export type PersonaAddendum = typeof personaAddenda.$inferSelect;
+export type NewPersonaAddendum = typeof personaAddenda.$inferInsert;
