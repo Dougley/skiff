@@ -97,7 +97,7 @@ export async function insertTopicSummary(params: {
   createdByUserId?: string | null;
   sourceConversationId?: string | null;
   summary: NonNullable<MemoryExtraction["topicSummary"]>;
-}): Promise<void> {
+}): Promise<{ id: number } | null> {
   const summary = params.summary;
 
   logger.debug("memory: inserting topic summary", {
@@ -127,20 +127,24 @@ export async function insertTopicSummary(params: {
     logger.debug("memory: topic embedding skipped (disabled)");
   }
 
-  await db.insert(topicKnowledge).values({
-    title: summary.title,
-    summary: summary.summary,
-    tags: summary.tags ?? [],
-    guildId: params.guildId ?? null,
-    createdByUserId: params.createdByUserId ?? null,
-    sourceConversationId: params.sourceConversationId ?? null,
-    embedding,
-    active: true,
-  });
+  const [inserted] = await db
+    .insert(topicKnowledge)
+    .values({
+      title: summary.title,
+      summary: summary.summary,
+      tags: summary.tags ?? [],
+      guildId: params.guildId ?? null,
+      createdByUserId: params.createdByUserId ?? null,
+      sourceConversationId: params.sourceConversationId ?? null,
+      embedding,
+      active: true,
+    })
+    .returning({ id: topicKnowledge.id });
 
   logger.debug("memory: topic summary stored", {
     title: summary.title,
   });
+  return inserted ?? null;
 }
 
 export async function storeExtraction(params: {

@@ -3,12 +3,15 @@ import type { AIEOS } from "../aieos/schema.js";
 import { getAieos, hasAieos } from "../aieos/state.js";
 import { env } from "../env/index.js";
 import { getSkillCatalog } from "../skills/index.js";
+import { getActiveAddenda } from "../sleep/addenda.js";
 
 import type { MessageContext } from "./conversation-turn.js";
 
 type SystemPromptOptions = {
   userFacts?: string[];
   messageContext?: MessageContext;
+  /** Guild ID for scoping durable persona addenda. */
+  guildId?: string | null;
 };
 
 export const getSystemPrompt = (options?: SystemPromptOptions): string => {
@@ -29,6 +32,17 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     "Never use characters typically associated with LLMs: em-dashes, ellipses, or excessive punctuation.",
     "To render math or equations, put LaTeX inside a ```latex fenced code block — it's converted to an image automatically. Nothing else triggers rendering, so raw `$...$` stays as text (safe for currency, shell vars, etc.).",
   ];
+
+  // Durable persona addenda — synthesized by the sleep cycle. These survive
+  // restart and represent lessons/traits the agent has grown into.
+  const addenda = getActiveAddenda(options?.guildId);
+  if (addenda.global.length + addenda.guild.length > 0) {
+    parts.push(
+      "\n## Durable Persona Notes",
+      ...addenda.global.map((t) => `- ${t}`),
+      ...addenda.guild.map((t) => `- ${t}`)
+    );
+  }
 
   // chat context: trusted metadata about the current conversation environment
   const ctx = options?.messageContext;
