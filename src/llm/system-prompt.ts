@@ -14,16 +14,36 @@ type SystemPromptOptions = {
   guildId?: string | null;
 };
 
-export const getSystemPrompt = (options?: SystemPromptOptions): string => {
+/**
+ * The system prompt is split into two contiguous spans:
+ *
+ *   stable   — persona, platform rules, durable addenda, tool/skill instructions.
+ *              identical across users/channels and stable for the lifetime of the
+ *              process (modulo addenda updates from the sleep cycle). marked with
+ *              an anthropic ephemeral cache breakpoint at the call site.
+ *
+ *   variable — chat context, current time, per-user facts. changes per turn,
+ *              so it must come *after* the cache breakpoint.
+ *
+ * NB: per-user facts MUST stay in `variable`. anthropic's prompt cache is
+ * content-hashed; mixing per-user facts into the cached span would let one
+ * user's facts leak into another user's cache lookup key.
+ */
+export interface SystemPromptParts {
+  stable: string;
+  variable: string;
+}
+
+export const getSystemPrompt = (
+  options?: SystemPromptOptions
+): SystemPromptParts => {
   const aieos = hasAieos() ? buildSystemPrompt(getAieos() as AIEOS) : null;
   const persona =
     aieos ||
     "No AIEOS data available. This likely means there was an error loading the AIEOS file during startup.";
 
-  const userFacts = options?.userFacts ?? [];
-
-  // build prompt: persona first, everything else supports it
-  const parts = [
+  // stable tier: cacheable across all turns/users in the process
+  const stableParts: string[] = [
     persona,
 
     "\n## Platform",
@@ -33,18 +53,36 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     "To render math or equations, put LaTeX inside a ```latex fenced code block — it's converted to an image automatically. Nothing else triggers rendering, so raw `$...$` stays as text (safe for currency, shell vars, etc.).",
   ];
 
-  // Durable persona addenda — synthesized by the sleep cycle. These survive
-  // restart and represent lessons/traits the agent has grown into.
+  // durable persona addenda — synthesized by the sleep cycle. stable per guild.
   const addenda = getActiveAddenda(options?.guildId);
   if (addenda.global.length + addenda.guild.length > 0) {
-    parts.push(
+    stableParts.push(
       "\n## Durable Persona Notes",
       ...addenda.global.map((t) => `- ${t}`),
       ...addenda.guild.map((t) => `- ${t}`)
     );
   }
 
-  // chat context: trusted metadata about the current conversation environment
+  stableParts.push(
+    "\n## Tools",
+    "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output. Only your final reply is shown.",
+    "The `send_message` tool sends to a different channel. Never use it for normal replies.",
+    "When your reply uses information from a web search or fetched URL, mark each inline citation with a superscript (¹ ² ³ ⁴ ⁵...) and call `cite_sources` with the matching index, URL, and a short title."
+  );
+
+  const skillCatalog = getSkillCatalog();
+  if (skillCatalog.length > 0) {
+    stableParts.push(
+      "\n## Skills",
+      "Use `activate_skill` to load a skill's full instructions when relevant.",
+      ...skillCatalog.map((s) => `- **${s.name}**: ${s.description}`)
+    );
+  }
+
+  // variable tier: anything that changes per turn / per channel / per user.
+  // truncated timestamp keeps the cache-busting churn to ~once a minute.
+  const variableParts: string[] = [];
+
   const ctx = options?.messageContext;
   if (ctx) {
     const chatContext: Record<string, unknown> = {
@@ -55,41 +93,27 @@ export const getSystemPrompt = (options?: SystemPromptOptions): string => {
     if (!ctx.isDM && ctx.guildName) {
       chatContext.guild = ctx.guildName;
     }
-    parts.push(`\`\`\`json\n${JSON.stringify(chatContext)}\n\`\`\``);
+    variableParts.push(`\`\`\`json\n${JSON.stringify(chatContext)}\n\`\`\``);
   }
 
-  parts.push(
-    "\n## Tools",
-    "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output. Only your final reply is shown.",
-    "The `send_message` tool sends to a different channel. Never use it for normal replies.",
-    "When your reply uses information from a web search or fetched URL, mark each inline citation with a superscript (¹ ² ³ ⁴ ⁵...) and call `cite_sources` with the matching index, URL, and a short title."
-  );
-
-  const skillCatalog = getSkillCatalog();
-  if (skillCatalog.length > 0) {
-    parts.push(
-      "\n## Skills",
-      "Use `activate_skill` to load a skill's full instructions when relevant.",
-      ...skillCatalog.map((s) => `- **${s.name}**: ${s.description}`)
-    );
-  }
-
-  // Time context: placed after stable sections so it doesn't bust prompt caching.
-  // Truncated to the minute so the prompt is stable within each 60s window.
   const now = new Date();
   now.setSeconds(0, 0);
-  parts.push(
+  variableParts.push(
     `\n## Context`,
     `Current time: ${now.toISOString()}`,
     `Model: ${env.LLM_DEFAULT_MODEL}`
   );
 
+  const userFacts = options?.userFacts ?? [];
   if (userFacts.length > 0) {
-    parts.push(
+    variableParts.push(
       "\n## Memory: User Facts",
       ...userFacts.map((fact) => `- ${fact}`)
     );
   }
 
-  return parts.join("\n");
+  return {
+    stable: stableParts.join("\n"),
+    variable: variableParts.join("\n"),
+  };
 };

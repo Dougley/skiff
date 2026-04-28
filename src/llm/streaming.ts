@@ -20,6 +20,60 @@ import { llmProvider } from "./provider.js";
 import { getSystemPrompt } from "./system-prompt.js";
 import type { MessageContext } from "./types.js";
 
+// prompt-caching helpers
+//
+// anthropic prompt caching needs explicit `cache_control` breakpoints. the
+// vercel ai sdk forwards `providerOptions.anthropic.cacheControl` to the
+// underlying api. openai/ollama ignore the `anthropic` namespace, so these
+// helpers are safe across providers.
+
+const ANTHROPIC_CACHE_CONTROL = {
+  anthropic: { cacheControl: { type: "ephemeral" } },
+} as const;
+
+// caches the entire tools array prefix up to (and including) the last tool.
+// when activate_skill injects MCP tools mid-turn, the breakpoint moves to
+// whatever the new last tool is — which means the previously-cached tool
+// span is invalidated for that turn. that's expected; the common path
+// (no skill activation) hits the cache.
+function markLastToolForCaching<T extends Record<string, unknown>>(
+  tools: T
+): T {
+  const keys = Object.keys(tools);
+  const lastKey = keys[keys.length - 1];
+  if (!lastKey) return tools;
+  const last = tools[lastKey] as Record<string, unknown>;
+  return {
+    ...tools,
+    [lastKey]: {
+      ...last,
+      providerOptions: {
+        ...((last.providerOptions as Record<string, unknown>) ?? {}),
+        ...ANTHROPIC_CACHE_CONTROL,
+      },
+    },
+  } as T;
+}
+
+// caches the conversation history up to (and including) the last message.
+// turn N+1 reuses turns 1..N entirely.
+function tagLastMessageForCaching(messages: ModelMessage[]): ModelMessage[] {
+  if (messages.length === 0) return messages;
+  const lastIdx = messages.length - 1;
+  const last = messages[lastIdx];
+  if (!last) return messages;
+  const existing =
+    (last as { providerOptions?: Record<string, unknown> }).providerOptions ??
+    {};
+  return [
+    ...messages.slice(0, lastIdx),
+    {
+      ...last,
+      providerOptions: { ...existing, ...ANTHROPIC_CACHE_CONTROL },
+    } as ModelMessage,
+  ];
+}
+
 // errors
 
 // thrown when the conversation history is too long to safely call the LLM
@@ -177,11 +231,24 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       logger.warn("fetch user facts failed", { err });
     }
   }
-  const system = getSystemPrompt({
+  const { stable: systemStable, variable: systemVariable } = getSystemPrompt({
     userFacts,
     messageContext: ctx.messageContext,
     guildId: toolContext.guildId,
   });
+
+  // two system messages let us put an anthropic cache breakpoint between
+  // the stable persona/tools/skills span and the per-turn variable tail.
+  // openai/ollama silently concatenate them and benefit from the stable
+  // prefix via automatic prefix caching (≥1024 tokens).
+  const systemMessages: ModelMessage[] = [
+    {
+      role: "system",
+      content: systemStable,
+      providerOptions: { ...ANTHROPIC_CACHE_CONTROL },
+    } as ModelMessage,
+    { role: "system", content: systemVariable },
+  ];
 
   logger.debug("chat: starting turn", {
     messageCount: messages.length,
@@ -229,9 +296,11 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       // stopWhen: stepCountIs(1) = single LLM call per iteration, tools are auto-executed
       const result = await generateText({
         model,
-        system,
-        messages: currentMessages,
-        tools,
+        messages: [
+          ...systemMessages,
+          ...tagLastMessageForCaching(currentMessages),
+        ],
+        tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
         abortSignal,
       }).catch((err) => {
@@ -250,10 +319,21 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       currentMessages = [...currentMessages, ...newMessages];
 
       for (const step of result.steps) {
+        const stepCacheRead = step.usage.inputTokenDetails?.cacheReadTokens;
+        const stepCacheWrite = step.usage.inputTokenDetails?.cacheWriteTokens;
         totalUsage = {
           ...totalUsage,
           inputTokens:
             (totalUsage.inputTokens ?? 0) + (step.usage.inputTokens ?? 0),
+          inputTokenDetails: {
+            ...totalUsage.inputTokenDetails,
+            cacheReadTokens:
+              (totalUsage.inputTokenDetails?.cacheReadTokens ?? 0) +
+              (stepCacheRead ?? 0),
+            cacheWriteTokens:
+              (totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0) +
+              (stepCacheWrite ?? 0),
+          },
           outputTokens:
             (totalUsage.outputTokens ?? 0) + (step.usage.outputTokens ?? 0),
           totalTokens:
