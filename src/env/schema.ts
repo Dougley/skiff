@@ -29,6 +29,10 @@ export const environmentVariableSchema = z.object({
   LLM_DEFAULT_PROVIDER: z
     .enum(["openai", "anthropic", "ollama"])
     .default("openai"),
+  VISION_ENABLED: z
+    .enum(["true", "false"])
+    .default("true")
+    .transform((v) => v === "true"),
   OLLAMA_API_KEY: z.string().optional(),
   OLLAMA_BASE_URL: z.string().default("http://localhost:11434"),
   OPENAI_API_KEY: z.string().optional(),

@@ -1,4 +1,4 @@
-import type { ModelMessage } from "@ai-sdk/provider-utils";
+import type { ImagePart, ModelMessage } from "@ai-sdk/provider-utils";
 import { container } from "@sapphire/framework";
 import {
   SeparatorBuilder,
@@ -11,6 +11,7 @@ import {
   getRecentMessages,
   insertMessage,
 } from "../db/queries.js";
+import { env } from "../env/index.js";
 import { logger } from "../logger/index.js";
 import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
@@ -38,6 +39,12 @@ import type { MessageContext } from "./types.js";
 
 export type { MessageContext };
 
+export interface ImageAttachment {
+  mediaType: string;
+  data: Buffer;
+  name: string;
+}
+
 export interface ConversationTurnParams {
   /** The user's input text. */
   content: string;
@@ -51,6 +58,8 @@ export interface ConversationTurnParams {
   toolContext: DiscordToolContext;
   /** Discord metadata about the sender and channel. */
   messageContext: MessageContext;
+  /** Image attachments to send as vision content (only sent if VISION_ENABLED). */
+  images?: ImageAttachment[];
   /**
    * Called (debounced) when tool activity updates occur.
    * Receives the formatted status text to display.
@@ -123,6 +132,7 @@ export async function handleConversationTurn(
     guildId,
     toolContext,
     messageContext,
+    images,
     onToolStatus,
     skipInitialStatus,
   } = params;
@@ -176,12 +186,31 @@ export async function handleConversationTurn(
     },
   });
 
+  const imageParts: ImagePart[] =
+    env.VISION_ENABLED && images && images.length > 0
+      ? images.map((img) => ({
+          type: "image" as const,
+          image: img.data,
+          mediaType: img.mediaType,
+        }))
+      : [];
+
+  const currentUserMessage: ModelMessage = imageParts.length > 0
+    ? {
+        role: "user" as const,
+        content: [
+          { type: "text" as const, text: `${senderMeta}\n${content}` },
+          ...imageParts,
+        ],
+      }
+    : { role: "user" as const, content: `${senderMeta}\n${content}` };
+
   let result: Awaited<ReturnType<typeof chatWithLLM>>;
   try {
     result = await chatWithLLM({
       messages: [
         ...historyToMessages(history),
-        { role: "user" as const, content: `${senderMeta}\n${content}` },
+        currentUserMessage,
       ],
       userId,
       toolContext,

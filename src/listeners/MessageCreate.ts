@@ -10,19 +10,27 @@ import {
 } from "discord.js";
 import { checkAccess, getAccessConfig } from "../access/guard.js";
 import { env } from "../env/index.js";
-import { handleConversationTurn } from "../llm/conversation-turn.js";
+import { handleConversationTurn, type ImageAttachment } from "../llm/conversation-turn.js";
 import { logger } from "../logger/index.js";
+
+const IMAGE_CONTENT_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
 
 // download attachments to SHELL_WORK_DIR/attachments/, return content lines + disk paths for cleanup
 async function downloadAttachments(
   messageId: string,
   attachments: Collection<string, Attachment>
-): Promise<{ lines: string[]; paths: string[] }> {
+): Promise<{ lines: string[]; paths: string[]; images: ImageAttachment[] }> {
   const dir = path.join(env.SHELL_WORK_DIR, "attachments");
   await fs.mkdir(dir, { recursive: true });
 
   const lines: string[] = [];
   const paths: string[] = [];
+  const images: ImageAttachment[] = [];
 
   for (const att of attachments.values()) {
     const ext = path.extname(att.name ?? "");
@@ -32,8 +40,8 @@ async function downloadAttachments(
     try {
       const res = await fetch(att.url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const buf = await res.arrayBuffer();
-      await fs.writeFile(filepath, Buffer.from(buf));
+      const buf = Buffer.from(await res.arrayBuffer());
+      await fs.writeFile(filepath, buf);
       paths.push(filepath);
       const meta = [att.contentType, att.size ? `${att.size} bytes` : null]
         .filter(Boolean)
@@ -41,6 +49,13 @@ async function downloadAttachments(
       lines.push(
         `[Attachment: ${att.name ?? filename} → ${filepath}${meta ? ` (${meta})` : ""}]`
       );
+      if (att.contentType && IMAGE_CONTENT_TYPES.has(att.contentType)) {
+        images.push({
+          mediaType: att.contentType,
+          data: buf,
+          name: att.name ?? filename,
+        });
+      }
     } catch (err) {
       logger.warn("Failed to download attachment", { url: att.url, err });
       lines.push(
@@ -49,7 +64,7 @@ async function downloadAttachments(
     }
   }
 
-  return { lines, paths };
+  return { lines, paths, images };
 }
 
 export class MessagesListener extends Listener {
@@ -121,12 +136,14 @@ export class MessagesListener extends Listener {
 
     // download any attachments and append info to content so the agent can access them
     let downloadedPaths: string[] = [];
+    let attachmentImages: ImageAttachment[] = [];
     if (message.attachments.size > 0) {
-      const { lines, paths } = await downloadAttachments(
+      const { lines, paths, images } = await downloadAttachments(
         message.id,
         message.attachments
       );
       downloadedPaths = paths;
+      attachmentImages = images;
       if (lines.length > 0) {
         const block = lines.join("\n");
         content = content ? `${content}\n\n${block}` : block;
@@ -159,6 +176,7 @@ export class MessagesListener extends Listener {
         userId: message.author.id,
         channelId: message.channelId,
         guildId: message.guildId,
+        images: attachmentImages.length > 0 ? attachmentImages : undefined,
         toolContext: {
           client: this.container.client,
           guildId: message.guildId,
