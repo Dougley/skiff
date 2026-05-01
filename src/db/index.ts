@@ -1,7 +1,7 @@
 import { PGlite } from "@electric-sql/pglite";
 import { vector } from "@electric-sql/pglite/vector";
 import { drizzle } from "drizzle-orm/pglite";
-import { env } from "../env/index.js";
+import { env } from "../config/env.js";
 
 export const client = new PGlite({
   dataDir: env.DATABASE_URL,

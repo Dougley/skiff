@@ -1,6 +1,6 @@
 import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
 import { and, desc, eq, isNotNull, or } from "drizzle-orm";
-import { env } from "../env/index.js";
+import { env } from "../config/env.js";
 import { conversations, db, heartbeatChannels, messages } from "./index.js";
 import type { Conversation, DBMessage } from "./schema.js";
 

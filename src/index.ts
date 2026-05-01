@@ -3,20 +3,20 @@
 import "./discord/logger-bridge.js";
 
 import pkg from "../package.json" with { type: "json" };
-import { initAccessConfig } from "./access/guard.js";
-import { loadAieosFile } from "./aieos/index.js";
-import { setAieos } from "./aieos/state.js";
+import { initAccessConfig } from "./config/access.js";
+import { env } from "./config/env.js";
+import { colors, logger } from "./config/logger.js";
 import { client as pgClient } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { client, startClient } from "./discord/client.js";
-import { env } from "./env/index.js";
-import { startHeartbeat, stopHeartbeat } from "./heartbeat/index.js";
-import { colors, logger } from "./logger/index.js";
-import { startScheduler, stopScheduler } from "./scheduler/index.js";
-import { initSkills } from "./skills/index.js";
-import { loadAddendaCache } from "./sleep/addenda.js";
-import { startSleepCycle, stopSleepCycle } from "./sleep/index.js";
-import { closeMCPClients } from "./tools/mcp.js";
+import { loadAieosFile } from "./ai/aieos/index.js";
+import { setAieos } from "./ai/aieos/state.js";
+import { closeMCPClients } from "./ai/tools/mcp.js";
+import { initSkills } from "./ai/skills/index.js";
+import { startScheduler, stopScheduler } from "./autonomous/scheduler/index.js";
+import { startHeartbeat, stopHeartbeat } from "./autonomous/heartbeat/index.js";
+import { loadAddendaCache } from "./autonomous/sleep/addenda.js";
+import { startSleepCycle, stopSleepCycle } from "./autonomous/sleep/index.js";
 
 function printBanner(metrics: {
   agentName: string;

@@ -1,5 +1,5 @@
-import { env } from "../env/index.js";
-import type { ToolActivityEvent } from "../llm/streaming.js";
+import { env } from "../config/env.js";
+import type { ToolActivityEvent } from "../ai/llm/streaming.js";
 import { EMOJI } from "./emoji.js";
 
 // tool metadata

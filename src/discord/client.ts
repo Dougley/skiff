@@ -1,7 +1,7 @@
 import { SapphireClient } from "@sapphire/framework";
 import { GatewayIntentBits, Partials } from "discord.js";
-import { env } from "../env/index.js";
-import { logger } from "../logger/index.js";
+import { env } from "../config/env.js";
+import { logger } from "../config/logger.js";
 
 const client = new SapphireClient({
   intents: [
@@ -11,6 +11,7 @@ const client = new SapphireClient({
     GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Channel],
+  baseUserDirectory: "src/discord",
 });
 
 export async function startClient() {

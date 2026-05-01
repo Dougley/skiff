@@ -5,7 +5,7 @@ import {
   SapphireClient,
 } from "@sapphire/framework";
 import type { ClientOptions } from "discord.js";
-import { logger } from "../logger/index.js";
+import { logger } from "../config/logger.js";
 
 export class LoggerBridgePlugin extends Plugin {
   public static override [preGenericsInitialization](

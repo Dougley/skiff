@@ -1,5 +1,5 @@
 import { migrate } from "drizzle-orm/pglite/migrator";
-import { logger } from "../logger/index.js";
+import { logger } from "../config/logger.js";
 import { db } from "./index.js";
 
 export async function runMigrations() {
