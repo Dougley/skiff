@@ -1,7 +1,7 @@
 {
   "name": "@dougley/skiff",
-  "version": "1.0.0",
-  "description": "OpenClaw for Discord",
+  "version": "0.1.0",
+  "description": "A small vessel with a big personality",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

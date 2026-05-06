@@ -72,6 +72,7 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `ANTHROPIC_API_BASE_URL` | -- | Custom Anthropic endpoint |
 | `OLLAMA_API_KEY` | -- | Ollama API key (if needed) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
+| `VISION_ENABLED` | `true` | Enable/disable vision (image) support |
 
 ### Memory & RAG
 
@@ -221,7 +222,7 @@ The sleep cycle is a background maintenance system that runs during idle periods
 | `MCP_CONFIG_PATH` | `mcp.json` | Path to MCP server config |
 | `AIEOS_FILE` | `./agent.aieos.json` | Path to persona file |
 | `GUILD_ID` | -- | Restrict command registration to a single guild (faster for dev) |
-| `CONTEXT_WINDOW_SIZE` | `128000` | Max context window size in tokens |
+| `CONTEXT_WINDOW_SIZE` | `200000` | Max context window size in tokens |
 
 ## Custom Personas
 
