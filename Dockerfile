@@ -10,9 +10,6 @@ COPY . .
 
 RUN pnpm build
 
-# strip devDependencies so only production deps are copied to runtime
-RUN pnpm prune --prod
-
 FROM node:24-slim
 
 WORKDIR /app
