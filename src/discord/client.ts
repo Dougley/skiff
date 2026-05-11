@@ -11,7 +11,12 @@ const client = new SapphireClient({
     GatewayIntentBits.MessageContent,
   ],
   partials: [Partials.Channel],
-  baseUserDirectory: "src/discord",
+  baseUserDirectory:
+    env.NODE_ENV === "production"
+      ? // be exact, for precision and to avoid any potential issues with relative paths in production
+        new URL("../../dist/discord", import.meta.url).pathname
+      : // in development, we want to use the source files directly for easier debugging
+        new URL("../../src/discord", import.meta.url).pathname,
 });
 
 export async function startClient() {

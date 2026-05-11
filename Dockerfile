@@ -10,6 +10,9 @@ COPY . .
 
 RUN pnpm build
 
+# strip devDependencies so only production deps are copied to runtime
+RUN pnpm prune --prod
+
 FROM node:24-slim
 
 WORKDIR /app
@@ -27,5 +30,8 @@ COPY --from=build /app/HEARTBEAT.md ./
 RUN groupadd --system skiff && useradd --system --gid skiff --create-home skiff
 
 USER skiff
+
+# set node env to production by default, can be overridden at runtime
+ENV NODE_ENV=production
 
 CMD ["node", "/app/dist/index.js"]
