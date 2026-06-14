@@ -3,20 +3,20 @@
 import "./discord/logger-bridge.js";
 
 import pkg from "../package.json" with { type: "json" };
+import { loadPersonaFile } from "./ai/persona/index.js";
+import { setPersona } from "./ai/persona/state.js";
+import { getSkillCatalog, initSkills } from "./ai/skills/index.js";
+import { closeMCPClients } from "./ai/tools/mcp.js";
+import { startHeartbeat, stopHeartbeat } from "./autonomous/heartbeat/index.js";
+import { startScheduler, stopScheduler } from "./autonomous/scheduler/index.js";
+import { loadAddendaCache } from "./autonomous/sleep/addenda.js";
+import { startSleepCycle, stopSleepCycle } from "./autonomous/sleep/index.js";
 import { initAccessConfig } from "./config/access.js";
 import { env } from "./config/env.js";
 import { colors, logger } from "./config/logger.js";
 import { client as pgClient } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { client, startClient } from "./discord/client.js";
-import { loadAieosFile } from "./ai/aieos/index.js";
-import { setAieos } from "./ai/aieos/state.js";
-import { closeMCPClients } from "./ai/tools/mcp.js";
-import { initSkills } from "./ai/skills/index.js";
-import { startScheduler, stopScheduler } from "./autonomous/scheduler/index.js";
-import { startHeartbeat, stopHeartbeat } from "./autonomous/heartbeat/index.js";
-import { loadAddendaCache } from "./autonomous/sleep/addenda.js";
-import { startSleepCycle, stopSleepCycle } from "./autonomous/sleep/index.js";
 
 function printBanner(metrics: {
   agentName: string;
@@ -67,8 +67,8 @@ async function main() {
 
   initAccessConfig(env);
 
-  const aieos = await loadAieosFile(env.AIEOS_FILE);
-  setAieos(aieos);
+  const persona = await loadPersonaFile(env.PERSONA_FILE);
+  setPersona(persona);
 
   await initSkills(env.SKILLS_DIR);
 
@@ -86,9 +86,9 @@ async function main() {
   const startupMs = Math.round(performance.now() - startTime);
 
   printBanner({
-    agentName: aieos.identity.names.nickname,
-    agentVersion: aieos.metadata.instance_version,
-    skills: aieos.capabilities.skills.length,
+    agentName: persona.nickname ?? persona.name,
+    agentVersion: persona.meta?.version ?? "0",
+    skills: getSkillCatalog().length,
     model: env.LLM_DEFAULT_MODEL,
     embeddings:
       env.EMBEDDING_PROVIDER === "disabled" ? "disabled" : env.EMBEDDING_MODEL,

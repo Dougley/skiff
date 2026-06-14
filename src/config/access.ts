@@ -2,7 +2,7 @@ import type { EnvironmentVariables } from "./env-schema.js";
 
 export type ToolGroup =
   | "discord"
-  | "aieos"
+  | "persona"
   | "memory"
   | "topic"
   | "web"
@@ -47,7 +47,7 @@ function parseCommaSeparated(value: string): Set<string> {
 
 const VALID_TOOL_GROUPS = new Set<ToolGroup>([
   "discord",
-  "aieos",
+  "persona",
   "memory",
   "topic",
   "web",

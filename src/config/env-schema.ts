@@ -48,7 +48,7 @@ export const environmentVariableSchema = z.object({
   RAG_RECENT_LIMIT: z.coerce.number().int().min(1).max(50).default(12),
   RAG_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.3),
   MCP_CONFIG_PATH: z.string().default("mcp.json"),
-  AIEOS_FILE: z.string().default("./agent.aieos.json"),
+  PERSONA_FILE: z.string().default("./agent.persona.json"),
   GUILD_ID: z.string().optional(),
   BRAVE_SEARCH_API_KEY: z.string().optional(),
   SHELL_ENABLED: z

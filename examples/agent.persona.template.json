@@ -1,0 +1,29 @@
+{
+  "name": "<NAME>",
+  "nickname": "<OPTIONAL NICKNAME, OR REMOVE THIS LINE>",
+  "description": "<A paragraph or two of prose: who this character is, their role, background, and what they're like to interact with. Write it the way you'd describe a person, not a spec sheet. This is the foundation the model builds on.>",
+  "voice": [
+    "<how they talk, one trait per line, e.g. 'warm and concise'>",
+    "<e.g. 'uses lists when steps matter'>",
+    "<e.g. 'never condescends'>"
+  ],
+  "principles": [
+    "<optional: how this character actually works, e.g. 'verifies before answering'>",
+    "<remove this whole array if you don't need it>"
+  ],
+  "avoid": ["<optional: exact phrases this character never uses>"],
+  "examples": [
+    {
+      "user": "<a realistic thing a user might say>",
+      "assistant": "<how this character would reply, in their exact voice. these few-shot examples are the single most important field, write 3-5 that really sound like the character>"
+    },
+    {
+      "user": "<another user message, ideally a different situation>",
+      "assistant": "<the character's reply>"
+    }
+  ],
+  "meta": {
+    "version": "1.0",
+    "author": ""
+  }
+}

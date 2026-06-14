@@ -1,11 +1,11 @@
 import type { MCPClient } from "@ai-sdk/mcp";
 import { getAccessConfig, getDisabledToolGroups } from "../../config/access.js";
 import { env } from "../../config/env.js";
-import { createAIEOSTools } from "./aieos.js";
 import { createDiscordTools, type DiscordToolContext } from "./discord.js";
 import { createHeartbeatTools } from "./heartbeat.js";
 import { createToolset as createMCPToolset } from "./mcp.js";
 import { createMemoryTools } from "./memory.js";
+import { createPersonaTools } from "./persona.js";
 import { createSchedulerTools } from "./scheduler.js";
 import { createShellTools } from "./shell.js";
 import { createSkillTools } from "./skills.js";
@@ -35,7 +35,7 @@ export async function createToolSet(
 
   return {
     ...(!disabled.has("discord") ? createDiscordTools(ctx) : {}),
-    ...(!disabled.has("aieos") ? createAIEOSTools() : {}),
+    ...(!disabled.has("persona") ? createPersonaTools() : {}),
     ...(!disabled.has("memory") ? createMemoryTools(ctx) : {}),
     ...(!disabled.has("topic") ? createTopicTools(ctx) : {}),
     ...(!disabled.has("web") ? createWebTools() : {}),

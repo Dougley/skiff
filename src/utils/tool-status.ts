@@ -1,5 +1,5 @@
-import { env } from "../config/env.js";
 import type { ToolActivityEvent } from "../ai/llm/streaming.js";
+import { env } from "../config/env.js";
 import { EMOJI } from "./emoji.js";
 
 // tool metadata
@@ -12,8 +12,8 @@ const TOOL_LABELS: Record<string, string> = {
   get_channel_messages: "Reading channel messages",
   react_to_message: "Adding reaction",
   send_message: "Sending message",
-  get_aieos_part: "Reading AIEOS config",
-  set_aieos_part: "Updating AIEOS config",
+  get_persona_part: "Reading persona",
+  set_persona_part: "Adjusting persona",
   memory_search: "Searching memory",
   topic_search: "Searching topics",
   fetch_url: "Fetching web page",
@@ -38,8 +38,8 @@ const TOOL_EMOJI: Record<string, string> = {
   get_channel_messages: EMOJI.discord,
   react_to_message: EMOJI.discord,
   send_message: EMOJI.discord,
-  get_aieos_part: EMOJI.robot,
-  set_aieos_part: EMOJI.robot,
+  get_persona_part: EMOJI.robot,
+  set_persona_part: EMOJI.robot,
   memory_search: EMOJI.floppy,
   topic_search: EMOJI.search,
   fetch_url: EMOJI.internet,

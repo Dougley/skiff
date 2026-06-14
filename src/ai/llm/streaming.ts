@@ -185,7 +185,7 @@ function isProviderContextOverflowError(err: unknown): boolean {
 /**
  * Run a single conversational turn against the LLM.
  *
- * This calls `generateText` with the AIEOS system prompt, the full message
+ * This calls `generateText` with the persona system prompt, the full message
  * history, and the Discord tool set.  Multi-step tool use is handled
  * automatically — the model can call tools up to `maxSteps` times before
  * it is forced to produce a final text reply.

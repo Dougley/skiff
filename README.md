@@ -22,7 +22,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 - **Web + browser tools**, Brave search, page fetch/markdown extraction, and Cloudflare CDP browser control
 - **MCP integration**, extend capabilities with external tool servers
 - **Skills**, activated on demand with minimal prompt overhead
-- **Customizable personas**, define identity, psychology, and speech patterns via [AIEOS](https://aieos.org)
+- **Customizable personas**, define a character with prose, voice, and example dialogue
 
 ## Quickstart
 
@@ -141,7 +141,7 @@ TOOL_DM_RULES=shell,web
 TOOL_USER_RULES=222222222222222222:scheduler
 ```
 
-Available tool groups: `discord`, `aieos`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
+Available tool groups: `discord`, `persona`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
 
 The `web` group controls `web_search`, `fetch_url`, and `browser_cdp` together.
 
@@ -220,16 +220,16 @@ The sleep cycle is a background maintenance system that runs during idle periods
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `MCP_CONFIG_PATH` | `mcp.json` | Path to MCP server config |
-| `AIEOS_FILE` | `./agent.aieos.json` | Path to persona file |
+| `PERSONA_FILE` | `./agent.persona.json` | Path to persona file |
 | `GUILD_ID` | -- | Restrict command registration to a single guild (faster for dev) |
 | `CONTEXT_WINDOW_SIZE` | `200000` | Max context window size in tokens |
 
 ## Custom Personas
 
-Skiff's personality is defined by an [AIEOS](https://aieos.org) JSON file, a structured format for character identity, psychology, speech patterns, and motivations. Point `AIEOS_FILE` at any valid persona:
+Skiff's personality is defined by a persona JSON file: prose `description`, a `voice` list, and `examples` of how the character talks. It deliberately avoids numeric trait scoring (Big Five, MBTI, etc.) because models mirror a few concrete example exchanges far more reliably than they interpret a `creativity: 0.6`. Point `PERSONA_FILE` at any valid persona:
 
 ```sh
-AIEOS_FILE=examples/agent.aieos.research-analyst.json pnpm dev
+PERSONA_FILE=examples/agent.persona.research-analyst.json pnpm dev
 ```
 
 The `examples/` directory has ready-made personas:
@@ -243,7 +243,7 @@ The `examples/` directory has ready-made personas:
 | **strict-sysadmin** (Kade) | Blunt, safety-first, asks for logs |
 | **kid-friendly-tutor** (Pip) | Patient, encouraging, safe |
 
-To build your own, copy `examples/agent.aieos.template.json` and fill it in. See `examples/README.md` for the full schema reference.
+To build your own, copy `examples/agent.persona.template.json` and fill it in. See `examples/README.md` for the full field reference.
 
 ## License
 

@@ -59,7 +59,7 @@ config:
   TOOL_USER_RULES: ""
   SKILLS_DIR: ./skills
   MCP_CONFIG_PATH: mcp.json
-  AIEOS_FILE: ./agent.aieos.json
+  PERSONA_FILE: ./agent.persona.json
   # Sleep cycle (dream pass) phase tuning
   SLEEP_CONSOLIDATE_LOOKBACK_DAYS: "30"
   SLEEP_CONSOLIDATE_MAX_USERS: "10"

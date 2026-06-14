@@ -233,7 +233,7 @@ export const personaAddenda = pgTable(
   {
     id: serial("id").primaryKey(),
     guildId: text("guild_id"), // null = global
-    target: text("target"), // null = free-form; else a dotted AIEOS path
+    target: text("target"), // null = free-form; else a dotted persona path
     text: text("text").notNull(),
     reason: text("reason"),
     sourceRunId: integer("source_run_id").references(() => sleepCycleRuns.id, {
