@@ -1,6 +1,6 @@
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { db, userFacts } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { db, userFacts } from "../../db/index.js";
 
 export async function fetchUserFacts(params: {
   userId: string;

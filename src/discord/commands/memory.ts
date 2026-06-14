@@ -5,9 +5,9 @@ import {
   MessageFlags,
 } from "discord.js";
 import { and, desc, eq, or, sql } from "drizzle-orm";
-import { db, userFacts } from "../../db/index.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { db, userFacts } from "../../db/index.js";
 
 export class MemoryCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {

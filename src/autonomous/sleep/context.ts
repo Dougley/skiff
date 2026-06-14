@@ -1,5 +1,5 @@
-import { db, sleepCycleChanges } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { db, sleepCycleChanges } from "../../db/index.js";
 
 export type DreamContext = {
   runId: number;

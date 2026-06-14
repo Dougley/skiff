@@ -1,9 +1,9 @@
 import type { Client } from "discord.js";
 import { MessageFlags } from "discord.js";
 import { and, eq, inArray, lte } from "drizzle-orm";
-import { db, type ScheduledTask, scheduledTasks } from "../../db/index.js";
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
 import { logger } from "../../config/logger.js";
+import { db, type ScheduledTask, scheduledTasks } from "../../db/index.js";
 import { getNextCronDate } from "./cron.js";
 
 const TICK_INTERVAL_MS = 30_000;

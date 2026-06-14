@@ -5,9 +5,9 @@ import {
   MessageFlags,
   type SlashCommandBuilder,
 } from "discord.js";
-import { deleteConversation } from "../../db/queries.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { deleteConversation } from "../../db/queries.js";
 
 export class ClearCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {

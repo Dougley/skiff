@@ -5,18 +5,14 @@ import {
   SeparatorSpacingSize,
   TextDisplayBuilder,
 } from "discord.js";
+import { env } from "../../config/env.js";
+import { logger } from "../../config/logger.js";
 import {
   getLastAssistantInputTokens,
   getOrCreateConversation,
   getRecentMessages,
   insertMessage,
 } from "../../db/queries.js";
-import { env } from "../../config/env.js";
-import { logger } from "../../config/logger.js";
-import { enqueueEmbedding } from "../memory/embeddings.js";
-import { enqueueMemoryExtraction } from "../memory/extract.js";
-import type { DiscordToolContext } from "../tools/discord.js";
-import { formatSourceRef } from "../tools/sources.js";
 import { EMOJI } from "../../utils/emoji.js";
 import { renderLatex } from "../../utils/latex.js";
 import {
@@ -28,6 +24,10 @@ import {
   formatContextUsage,
   formatToolStatusMessage,
 } from "../../utils/tool-status.js";
+import { enqueueEmbedding } from "../memory/embeddings.js";
+import { enqueueMemoryExtraction } from "../memory/extract.js";
+import type { DiscordToolContext } from "../tools/discord.js";
+import { formatSourceRef } from "../tools/sources.js";
 import {
   ContextWindowFullError,
   chat as chatWithLLM,
@@ -195,23 +195,21 @@ export async function handleConversationTurn(
         }))
       : [];
 
-  const currentUserMessage: ModelMessage = imageParts.length > 0
-    ? {
-        role: "user" as const,
-        content: [
-          { type: "text" as const, text: `${senderMeta}\n${content}` },
-          ...imageParts,
-        ],
-      }
-    : { role: "user" as const, content: `${senderMeta}\n${content}` };
+  const currentUserMessage: ModelMessage =
+    imageParts.length > 0
+      ? {
+          role: "user" as const,
+          content: [
+            { type: "text" as const, text: `${senderMeta}\n${content}` },
+            ...imageParts,
+          ],
+        }
+      : { role: "user" as const, content: `${senderMeta}\n${content}` };
 
   let result: Awaited<ReturnType<typeof chatWithLLM>>;
   try {
     result = await chatWithLLM({
-      messages: [
-        ...historyToMessages(history),
-        currentUserMessage,
-      ],
+      messages: [...historyToMessages(history), currentUserMessage],
       userId,
       toolContext,
       messageContext,

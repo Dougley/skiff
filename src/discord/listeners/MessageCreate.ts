@@ -8,9 +8,12 @@ import {
   MessageFlags,
   TextDisplayBuilder,
 } from "discord.js";
+import {
+  handleConversationTurn,
+  type ImageAttachment,
+} from "../../ai/llm/conversation-turn.js";
 import { checkAccess, getAccessConfig } from "../../config/access.js";
 import { env } from "../../config/env.js";
-import { handleConversationTurn, type ImageAttachment } from "../../ai/llm/conversation-turn.js";
 import { logger } from "../../config/logger.js";
 
 const IMAGE_CONTENT_TYPES = new Set([

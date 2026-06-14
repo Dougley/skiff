@@ -1,11 +1,11 @@
 import { generateObject } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, topicKnowledge } from "../../../db/index.js";
-import { env } from "../../../config/env.js";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
-import { logger } from "../../../config/logger.js";
 import { cosineSimilarity } from "../../../ai/memory/vector.js";
+import { env } from "../../../config/env.js";
+import { logger } from "../../../config/logger.js";
+import { db, topicKnowledge } from "../../../db/index.js";
 import {
   SLEEP_DEDUPE_SIMILARITY,
   SLEEP_MAX_MERGES_PER_RUN,

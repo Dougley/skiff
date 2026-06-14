@@ -1,6 +1,6 @@
 import { and, eq, lte, sql } from "drizzle-orm";
-import { db, sleepCycleSettings } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { db, sleepCycleSettings } from "../../db/index.js";
 import { executeDreamPass } from "./run.js";
 
 const TICK_INTERVAL_MS = 5 * 60 * 1000;

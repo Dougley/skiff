@@ -1,7 +1,7 @@
 import { type Embedding, embed } from "ai";
+import { logger } from "../../config/logger.js";
 import { db, messageEmbeddings } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
-import { logger } from "../../config/logger.js";
 import { normalizeEmbeddingDimensions } from "./vector.js";
 
 export type EmbeddingJob = {

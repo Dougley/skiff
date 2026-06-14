@@ -1,10 +1,10 @@
 import { generateObject } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, messages, userFacts } from "../../../db/index.js";
-import { env } from "../../../config/env.js";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { env } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
+import { db, messages, userFacts } from "../../../db/index.js";
 import {
   SLEEP_CONSOLIDATE_LOOKBACK_MS,
   SLEEP_CONSOLIDATE_MAX_USERS,

@@ -1,8 +1,8 @@
 import type { Client } from "discord.js";
 import { MessageFlags } from "discord.js";
-import { getHeartbeatChannels } from "../../db/queries.js";
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
 import { logger } from "../../config/logger.js";
+import { getHeartbeatChannels } from "../../db/queries.js";
 import {
   getHeartbeatConfig,
   isWithinActiveHours,

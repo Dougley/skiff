@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
-import { db, personaAddenda } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { db, personaAddenda } from "../../db/index.js";
 import { SLEEP_MAX_ADDENDA_PER_SCOPE } from "./config.js";
 
 type AddendaCache = {

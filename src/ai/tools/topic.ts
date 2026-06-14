@@ -2,10 +2,10 @@ import { tool } from "@ai-sdk/provider-utils";
 import { type Embedding, embed } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { db, topicKnowledge } from "../../db/index.js";
 import { env } from "../../config/env.js";
-import { embeddingProvider } from "../llm/provider.js";
 import { logger } from "../../config/logger.js";
+import { db, topicKnowledge } from "../../db/index.js";
+import { embeddingProvider } from "../llm/provider.js";
 import {
   normalizeEmbeddingDimensions,
   toVectorLiteral,

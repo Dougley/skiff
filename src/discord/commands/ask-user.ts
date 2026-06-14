@@ -7,8 +7,8 @@ import {
   MessageFlags,
   TextDisplayBuilder,
 } from "discord.js";
-import { env } from "../../config/env.js";
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
+import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 
 export class AskUserCommand extends Command {

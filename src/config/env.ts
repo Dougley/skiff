@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { logger } from "./logger.js";
 import type { EnvironmentVariables } from "./env-schema.js";
 import { environmentVariableSchema } from "./env-schema.js";
+import { logger } from "./logger.js";
 
 export function validateEnvironmentVariables(
   env: Record<string, string | undefined>

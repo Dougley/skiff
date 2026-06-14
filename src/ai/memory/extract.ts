@@ -1,8 +1,8 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { env } from "../../config/env.js";
-import { getLLMProvider } from "../llm/provider.js";
 import { logger } from "../../config/logger.js";
+import { getLLMProvider } from "../llm/provider.js";
 import { storeExtraction } from "./store.js";
 
 export const userFactSchema = z.object({

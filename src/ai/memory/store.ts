@@ -1,8 +1,8 @@
 import { type Embedding, embed } from "ai";
 import { and, eq, sql } from "drizzle-orm";
+import { logger } from "../../config/logger.js";
 import { db, topicKnowledge, userFacts } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
-import { logger } from "../../config/logger.js";
 import type { MemoryExtraction } from "./extract.js";
 import { normalizeEmbeddingDimensions } from "./vector.js";
 

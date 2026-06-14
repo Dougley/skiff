@@ -1,5 +1,5 @@
-import { EMBEDDING_DIMENSIONS } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { EMBEDDING_DIMENSIONS } from "../../db/index.js";
 
 export function normalizeEmbeddingDimensions(embedding: number[]): number[] {
   if (embedding.length === EMBEDDING_DIMENSIONS) return embedding;

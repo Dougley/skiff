@@ -1,6 +1,9 @@
 import { rm } from "node:fs/promises";
 import { resolve, sep } from "node:path";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { reloadSkills } from "../../ai/skills/index.js";
+import { env } from "../../config/env.js";
+import { logger } from "../../config/logger.js";
 import {
   db,
   personaAddenda,
@@ -8,9 +11,6 @@ import {
   topicKnowledge,
   userFacts,
 } from "../../db/index.js";
-import { env } from "../../config/env.js";
-import { logger } from "../../config/logger.js";
-import { reloadSkills } from "../../ai/skills/index.js";
 import { refreshAddendaCache } from "./addenda.js";
 
 function isInsideSkillsDir(target: string): boolean {

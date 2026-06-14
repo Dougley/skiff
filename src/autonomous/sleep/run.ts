@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
-import { db, sleepCycleRuns, sleepCycleSettings } from "../../db/index.js";
 import { logger } from "../../config/logger.js";
+import { db, sleepCycleRuns, sleepCycleSettings } from "../../db/index.js";
 import type { DreamContext } from "./context.js";
 import { consolidateFacts } from "./phases/consolidate-facts.js";
 import { dedupeTopics } from "./phases/dedupe-topics.js";
