@@ -38,6 +38,10 @@ export async function upsertUserFacts(params: {
         ? eq(userFacts.guildId, guildId)
         : sql`${userFacts.guildId} is null`;
 
+      // only supersede a restatement of the same fact (normalized text match).
+      // never supersede by category — unrelated facts share categories, and
+      // contradictions are the sleep cycle's consolidate phase to resolve.
+      const normalizedFact = fact.fact.trim().toLowerCase();
       const existing = await tx
         .select()
         .from(userFacts)
@@ -45,7 +49,7 @@ export async function upsertUserFacts(params: {
           and(
             eq(userFacts.userId, params.userId),
             eq(userFacts.active, true),
-            category ? eq(userFacts.category, category) : sql`true`,
+            sql`lower(trim(${userFacts.fact})) = ${normalizedFact}`,
             scopeFilter
           )
         )

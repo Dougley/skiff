@@ -131,30 +131,44 @@ function flushConversation(conversationId: string) {
   }
 
   const turns = entry.turns;
-  const last = turns[turns.length - 1];
   pending.delete(conversationId);
+
+  // group turns by sender so facts are attributed to the user who said them,
+  // not whoever happened to speak last in the channel
+  const byUser = new Map<string, MemoryExtractionInput[]>();
+  for (const turn of turns) {
+    const key = turn.userId ?? "";
+    const group = byUser.get(key);
+    if (group) group.push(turn);
+    else byUser.set(key, [turn]);
+  }
 
   logger.debug("memory extraction: conversation idle, flushing", {
     conversationId,
     turnCount: turns.length,
+    userCount: byUser.size,
   });
 
-  void extractMemory(turns)
-    .then((extraction) =>
-      storeExtraction({
-        extraction,
-        userId: last?.userId ?? null,
-        guildId: last?.guildId ?? null,
-        sourceMessageId: last?.sourceMessageId ?? null,
-        sourceConversationId: conversationId,
-      })
-    )
-    .catch((err) => {
-      logger.warn("memory extraction flush failed", {
-        conversationId,
-        err,
+  for (const [userId, userTurns] of byUser) {
+    const last = userTurns[userTurns.length - 1];
+    void extractMemory(userTurns)
+      .then((extraction) =>
+        storeExtraction({
+          extraction,
+          userId: userId || null,
+          guildId: last?.guildId ?? null,
+          sourceMessageId: last?.sourceMessageId ?? null,
+          sourceConversationId: conversationId,
+        })
+      )
+      .catch((err) => {
+        logger.warn("memory extraction flush failed", {
+          conversationId,
+          userId: userId || null,
+          err,
+        });
       });
-    });
+  }
 }
 
 /**
