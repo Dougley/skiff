@@ -20,8 +20,34 @@ let tickHandle: ReturnType<typeof setInterval> | null = null;
 export function startScheduler(client: Client): void {
   if (tickHandle) return;
   logger.info("Scheduler started");
-  void tick(client);
+  void reclaimStuckTasks().then(() => tick(client));
   tickHandle = setInterval(() => void tick(client), TICK_INTERVAL_MS);
+}
+
+/**
+ * Reset tasks left claimed at the sentinel by a crash between claim and
+ * reschedule — without this they would never become due again.
+ */
+async function reclaimStuckTasks(): Promise<void> {
+  try {
+    const reclaimed = await db
+      .update(scheduledTasks)
+      .set({ nextRunAt: new Date() })
+      .where(
+        and(
+          eq(scheduledTasks.enabled, true),
+          eq(scheduledTasks.nextRunAt, CLAIM_SENTINEL)
+        )
+      )
+      .returning({ id: scheduledTasks.id });
+    if (reclaimed.length > 0) {
+      logger.warn("Scheduler: reclaimed tasks stuck at claim sentinel", {
+        taskIds: reclaimed.map((t) => t.id),
+      });
+    }
+  } catch (err) {
+    logger.error("Scheduler: failed to reclaim stuck tasks", { err });
+  }
 }
 
 export function stopScheduler(): void {
@@ -119,6 +145,7 @@ async function fireTask(
         isDM: channel.isDMBased(),
       },
       skipInitialStatus: true,
+      skipMemory: true,
     });
 
     // Send response to channel
