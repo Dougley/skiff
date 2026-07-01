@@ -91,10 +91,18 @@ export async function getRecentMessages(
         )
       )
     )
-    .orderBy(desc(messages.createdAt))
+    .orderBy(desc(messages.id))
     .limit(limit ?? env.RAG_RECENT_LIMIT);
 
-  return rows.reverse();
+  const ordered = rows.reverse();
+
+  // drop leading tool results whose assistant tool-call row fell outside the
+  // window — providers reject a history that opens with an orphaned tool message
+  while (ordered.length > 0 && ordered[0]?.role === "tool") {
+    ordered.shift();
+  }
+
+  return ordered;
 }
 
 // most recent provider-reported input tokens for this conversation, or null if none
