@@ -456,7 +456,22 @@ async function evaluateInTarget(
     });
   });
 
-  return (result as { result?: { value?: unknown } })?.result?.value;
+  const evaluation = result as {
+    result?: { value?: unknown };
+    exceptionDetails?: {
+      text?: string;
+      exception?: { description?: string };
+    };
+  };
+  // surface page-side errors instead of silently returning undefined
+  if (evaluation?.exceptionDetails) {
+    const detail =
+      evaluation.exceptionDetails.exception?.description ??
+      evaluation.exceptionDetails.text ??
+      "Unknown evaluation error";
+    throw new Error(`Evaluation failed: ${detail}`);
+  }
+  return evaluation?.result?.value;
 }
 
 export const createWebTools = () => {
@@ -772,7 +787,7 @@ export const createWebTools = () => {
               `(() => {
                 const el = document.querySelector(${JSON.stringify(css)});
                 if (!el) return { ok: false, reason: "Element not found" };
-                (el as HTMLElement).click();
+                el.click();
                 return { ok: true };
               })()`
             );
@@ -796,11 +811,10 @@ export const createWebTools = () => {
               `(() => {
                 const el = document.querySelector(${JSON.stringify(css)});
                 if (!el) return { ok: false, reason: "Element not found" };
-                const target = el as HTMLInputElement | HTMLTextAreaElement;
-                target.focus();
-                target.value = ${JSON.stringify(text)};
-                target.dispatchEvent(new Event("input", { bubbles: true }));
-                target.dispatchEvent(new Event("change", { bubbles: true }));
+                el.focus();
+                el.value = ${JSON.stringify(text)};
+                el.dispatchEvent(new Event("input", { bubbles: true }));
+                el.dispatchEvent(new Event("change", { bubbles: true }));
                 return { ok: true };
               })()`
             );
