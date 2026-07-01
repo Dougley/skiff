@@ -83,17 +83,20 @@ export const userFacts = pgTable(
   ]
 );
 
-// message embeddings — for RAG retrieval
+// message embeddings — for RAG retrieval. embeddings are long-term memory:
+// they survive /clear (set null instead of cascade) and are scoped by
+// channel_id so a fresh conversation in the same channel can still recall them
 export const messageEmbeddings = pgTable(
   "message_embeddings",
   {
     id: serial("id").primaryKey(),
-    messageId: integer("message_id")
-      .notNull()
-      .references(() => messages.id, { onDelete: "cascade" }),
-    conversationId: uuid("conversation_id")
-      .notNull()
-      .references(() => conversations.id, { onDelete: "cascade" }),
+    messageId: integer("message_id").references(() => messages.id, {
+      onDelete: "set null",
+    }),
+    conversationId: uuid("conversation_id").references(() => conversations.id, {
+      onDelete: "set null",
+    }),
+    channelId: text("channel_id"),
     userId: text("user_id"),
     guildId: text("guild_id"),
     content: text("content").notNull(), // denormalized for display without joins
@@ -104,6 +107,7 @@ export const messageEmbeddings = pgTable(
   },
   (t) => [
     index("idx_embeddings_conversation").on(t.conversationId),
+    index("idx_embeddings_channel").on(t.channelId),
     index("idx_embeddings_user").on(t.userId),
   ]
 );

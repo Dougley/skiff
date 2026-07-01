@@ -4,12 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
-import {
-  conversations,
-  db,
-  messageEmbeddings,
-  messages,
-} from "../../db/index.js";
+import { db, messageEmbeddings, messages } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
 import {
   normalizeEmbeddingDimensions,
@@ -18,7 +13,7 @@ import {
 import type { DiscordToolContext } from "./discord.js";
 
 type MemoryMatch = {
-  messageId: number;
+  messageId: number | null;
   role: string | null;
   userId: string | null;
   createdAt: string | null;
@@ -33,7 +28,7 @@ type MemorySearchResult = {
     | "empty_query"
     | "embedding_failed"
     | "db_error"
-    | "conversation_not_found";
+    | "channel_not_found";
 };
 
 const MAX_CONTENT_CHARS = 600;
@@ -43,28 +38,10 @@ const normalizeContent = (content: string) =>
     ? `${content.slice(0, MAX_CONTENT_CHARS)}…`
     : content;
 
-async function resolveConversationId(
-  ctx: DiscordToolContext
-): Promise<string | null> {
-  if (!ctx.channelId) return null;
-  const match = await db
-    .select({ id: conversations.id })
-    .from(conversations)
-    .where(
-      ctx.guildId
-        ? and(
-            eq(conversations.channelId, ctx.channelId),
-            eq(conversations.guildId, ctx.guildId)
-          )
-        : eq(conversations.channelId, ctx.channelId)
-    )
-    .limit(1);
-  return match[0]?.id ?? null;
-}
-
+// scoped by channel (not conversation UUID) so long-term memory survives /clear
 function buildSimilarityQuery(
   embedding: Embedding,
-  conversationId: string
+  channelId: string
 ): Promise<MemoryMatch[]> {
   const vector = sql`${toVectorLiteral(normalizeEmbeddingDimensions(embedding))}::vector`;
   const distance = sql<number>`(${messageEmbeddings.embedding} <=> ${vector})`;
@@ -83,7 +60,7 @@ function buildSimilarityQuery(
     .leftJoin(messages, eq(messages.id, messageEmbeddings.messageId))
     .where(
       and(
-        eq(messageEmbeddings.conversationId, conversationId),
+        eq(messageEmbeddings.channelId, channelId),
         sql`${messageEmbeddings.embedding} is not null`,
         sql`${similarity} >= ${env.RAG_MIN_SIMILARITY}`
       )
@@ -120,9 +97,9 @@ export const createMemoryTools = (ctx: DiscordToolContext) => ({
         return { results: [], reason: "embedding_disabled" };
       }
 
-      const conversationId = await resolveConversationId(ctx);
-      if (!conversationId) {
-        return { results: [], reason: "conversation_not_found" };
+      const channelId = ctx.channelId;
+      if (!channelId) {
+        return { results: [], reason: "channel_not_found" };
       }
 
       let embedding: Embedding;
@@ -141,7 +118,7 @@ export const createMemoryTools = (ctx: DiscordToolContext) => ({
       }
 
       try {
-        const results = await buildSimilarityQuery(embedding, conversationId);
+        const results = await buildSimilarityQuery(embedding, channelId);
         logger.debug("memory_search results", {
           resultCount: results.length,
         });

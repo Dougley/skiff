@@ -50,6 +50,13 @@
       "when": 1776955757539,
       "tag": "0006_tiresome_proteus",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1782949026199,
+      "tag": "0007_broken_apocalypse",
+      "breakpoints": true
     }
   ]
 }

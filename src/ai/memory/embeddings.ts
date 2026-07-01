@@ -7,6 +7,7 @@ import { normalizeEmbeddingDimensions } from "./vector.js";
 export type EmbeddingJob = {
   messageId: number;
   conversationId: string;
+  channelId: string;
   userId?: string | null;
   guildId?: string | null;
   content: string;
@@ -24,6 +25,7 @@ async function writeEmbedding(job: EmbeddingJob, embedding: Embedding) {
   await db.insert(messageEmbeddings).values({
     messageId: job.messageId,
     conversationId: job.conversationId,
+    channelId: job.channelId,
     userId: job.userId ?? null,
     guildId: job.guildId ?? null,
     content: normalizeContent(job.content),
