@@ -12,6 +12,8 @@ type SystemPromptOptions = {
   messageContext?: MessageContext;
   /** Guild ID for scoping durable persona addenda. */
   guildId?: string | null;
+  /** Channel ID for channel-scoped persona overrides (set_persona_part). */
+  channelId?: string | null;
 };
 
 /**
@@ -37,8 +39,10 @@ export interface SystemPromptParts {
 export const getSystemPrompt = (
   options?: SystemPromptOptions
 ): SystemPromptParts => {
+  // channel-scoped: a set_persona_part override in one channel yields a
+  // distinct stable span (and cache entry) for that channel only
   const rendered = hasPersona()
-    ? buildPersonaPrompt(getPersona() as Persona)
+    ? buildPersonaPrompt(getPersona(options?.channelId) as Persona)
     : null;
   const persona =
     rendered ||

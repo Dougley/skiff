@@ -1,7 +1,8 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { personaSchema } from "../persona/index.js";
-import { getPersona, setPersona } from "../persona/state.js";
+import { getPersona, setPersonaOverride } from "../persona/state.js";
+import type { DiscordToolContext } from "./discord.js";
 
 // every readable persona part
 const partIds = [
@@ -19,7 +20,7 @@ const partIds = [
 // intent. letting the model rewrite its own examples/description is out of scope.
 const settablePartIds = ["voice", "principles"] as const;
 
-export function createPersonaTools() {
+export function createPersonaTools(ctx: DiscordToolContext) {
   return {
     get_persona_part: tool({
       description:
@@ -30,7 +31,7 @@ export function createPersonaTools() {
           .describe("The persona part to retrieve."),
       }),
       execute: async ({ partId }) => {
-        const persona = getPersona();
+        const persona = getPersona(ctx.channelId);
         if (!persona) {
           return { error: "Persona is not loaded." };
         }
@@ -43,7 +44,7 @@ export function createPersonaTools() {
     }),
     set_persona_part: tool({
       description:
-        "Adjust your voice or principles for the current turn only. Changes are in-memory and wiped on restart — this is for short-lived tone shifts, not durable growth. For lasting change, wait for the sleep cycle to write a persona addendum.",
+        "Adjust your voice or principles for this channel only. Changes are in-memory and wiped on restart — this is for short-lived tone shifts, not durable growth. For lasting change, wait for the sleep cycle to write a persona addendum.",
       inputSchema: z.object({
         partId: z
           .enum(settablePartIds, {
@@ -55,7 +56,7 @@ export function createPersonaTools() {
           .describe("The new content as a JSON array of strings."),
       }),
       execute: async ({ partId, content }) => {
-        const persona = getPersona();
+        const persona = getPersona(ctx.channelId);
         if (!persona) {
           return { error: "Persona is not loaded." };
         }
@@ -70,11 +71,11 @@ export function createPersonaTools() {
         if (!result.success) {
           return { error: "content does not match the persona schema." };
         }
-        setPersona({ ...persona, [partId]: result.data });
+        setPersonaOverride(ctx.channelId, { [partId]: result.data });
         return {
           success: true,
           updatedPart: result.data,
-          hint: "Temporary, lost on restart.",
+          hint: "Applies to this channel only. Temporary, lost on restart.",
         };
       },
     }),
