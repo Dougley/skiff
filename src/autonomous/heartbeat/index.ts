@@ -121,22 +121,12 @@ async function runHeartbeatForChannel(
       isDM: channel.isDMBased(),
     },
     skipInitialStatus: true,
+    skipMemory: true,
   });
 
-  // Check if response should be suppressed
-  const responseText = result.messages
-    .flatMap((msg) => msg.components)
-    .map((component) => {
-      const json = component.toJSON();
-      if ("content" in json && typeof json.content === "string") {
-        return json.content;
-      }
-      return "";
-    })
-    .join("\n")
-    .trim();
-
-  const shouldSuppress = isHeartbeatOk(responseText, config.ackMaxChars);
+  // Check if response should be suppressed — use the raw model text so the
+  // rendered footer (tool summary, sources) doesn't count against ackMaxChars
+  const shouldSuppress = isHeartbeatOk(result.text.trim(), config.ackMaxChars);
 
   if (shouldSuppress) {
     logger.debug("Heartbeat: HEARTBEAT_OK received, suppressing output", {
