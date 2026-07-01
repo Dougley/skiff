@@ -1,6 +1,6 @@
 import { tool } from "@ai-sdk/provider-utils";
 import { type Embedding, embed } from "ai";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
@@ -50,7 +50,10 @@ async function queryTopics(
       and(
         eq(topicKnowledge.active, true),
         sql`${topicKnowledge.embedding} is not null`,
-        guildId ? eq(topicKnowledge.guildId, guildId) : sql`true`,
+        // DMs only see DM-scoped topics — guild knowledge must not leak out
+        guildId
+          ? eq(topicKnowledge.guildId, guildId)
+          : isNull(topicKnowledge.guildId),
         sql`${similarity} >= ${env.RAG_MIN_SIMILARITY}`
       )
     )

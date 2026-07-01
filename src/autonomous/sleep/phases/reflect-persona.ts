@@ -62,8 +62,9 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
     .where(
       and(
         gt(messages.createdAt, cutoff),
+        // null scope means DM/global conversations only — never all guilds
         ctx.guildId === null
-          ? sql`1 = 1`
+          ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
           : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`,
         sql`${messages.content} is not null`
       )
