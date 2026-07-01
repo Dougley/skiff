@@ -88,7 +88,7 @@ export class ContextWindowFullError extends Error {
 
 // types
 
-/** Fired once per tool call or reasoning step so the caller can surface progress in Discord. */
+/** Fired per tool call, reasoning step, or interim narration so the caller can surface progress in Discord. */
 export type ToolActivityEvent =
   | {
       type: "tool";
@@ -107,6 +107,13 @@ export type ToolActivityEvent =
       stepNumber: number;
       /** Number of reasoning tokens used in this step. */
       tokens: number;
+    }
+  | {
+      type: "text";
+      /** Which step in the multi-step loop (0-indexed). */
+      stepNumber: number;
+      /** Interim assistant text produced alongside tool calls, shown live while the turn runs. */
+      text: string;
     };
 
 /** Everything the chat loop needs to run a single turn. */
@@ -359,6 +366,17 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
             type: "reasoning",
             stepNumber: stepCounter,
             tokens: reasoningTokens,
+          });
+        }
+
+        // interim narration: text the model wrote before its tool calls is
+        // surfaced live in the status message. the final step's text is the
+        // reply itself, so only tool-call steps emit this.
+        if (result.finishReason === "tool-calls" && step.text.trim()) {
+          onToolActivity?.({
+            type: "text",
+            stepNumber: stepCounter,
+            text: step.text.trim(),
           });
         }
 

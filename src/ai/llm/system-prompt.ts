@@ -74,7 +74,8 @@ export const getSystemPrompt = (
 
   stableParts.push(
     "\n## Tools",
-    "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output. Only your final reply is shown.",
+    "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output.",
+    "Text you write in the same response as a tool call is shown live as working commentary while the tools run. A short line about what you're doing ('let me check...') keeps the user in the loop on longer tasks. The commentary disappears when you finish, replaced by your final reply — so the final reply must stand on its own.",
     "The `send_message` tool sends to a different channel. Never use it for normal replies.",
     "When your reply uses information from a web search or fetched URL, mark each inline citation with a superscript (¹ ² ³ ⁴ ⁵...) and call `cite_sources` with the matching index, URL, and a short title."
   );

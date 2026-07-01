@@ -126,10 +126,7 @@ function randomLoadingLine(): string {
   );
 }
 
-function formatEventLine(event: ToolActivityEvent): string {
-  if (event.type === "reasoning") {
-    return `${EMOJI.robot} Reasoning`;
-  }
+function formatEventLine(event: ToolEvent): string {
   // Show custom status text for update_status tool calls
   if (event.toolName === "update_status" && isStatusOutput(event.output)) {
     return `${EMOJI.robot} ${event.output.status}`;
@@ -158,18 +155,30 @@ const COLLAPSE_TAIL = 2;
  * only the most recent COLLAPSE_TAIL calls are shown.
  */
 type ToolEvent = Extract<ToolActivityEvent, { type: "tool" }>;
+type TextEvent = Extract<ToolActivityEvent, { type: "text" }>;
 
 const isToolEvent = (e: ToolActivityEvent): e is ToolEvent => e.type === "tool";
+const isTextEvent = (e: ToolActivityEvent): e is TextEvent => e.type === "text";
+
+// cap each narration snippet so a chatty step can't blow the 4000-char TextDisplay limit
+const NARRATION_MAX_CHARS = 500;
+
+function formatNarration(text: string): string {
+  return text.length > NARRATION_MAX_CHARS
+    ? `${text.slice(0, NARRATION_MAX_CHARS)}…`
+    : text;
+}
 
 export function formatToolStatusMessage(
   events: ToolActivityEvent[],
   done: boolean
 ): string {
-  // reasoning events are internal — only show tool calls to the user
+  // reasoning events are internal — only tool calls and interim narration are shown
   // update_status is treated specially: excluded from the tree, used as the tail line
   const toolEvents = events.filter(
     (e): e is ToolEvent => isToolEvent(e) && e.toolName !== "update_status"
   );
+  const narrations = events.filter(isTextEvent);
 
   // latest update_status text becomes the tail instead of a random loading line
   const lastStatus = events
@@ -181,14 +190,9 @@ export function formatToolStatusMessage(
       ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}`
       : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`;
 
-  if (toolEvents.length === 0) {
-    return lastStatus && isStatusOutput(lastStatus.output)
-      ? `-# ${EMOJI.robot} ${lastStatus.output.status}`
-      : `-# ${EMOJI.loading} ${randomLoadingLine()}`;
-  }
-
   if (done) {
-    // collapsed single-line summary for completed turns
+    // collapsed single-line summary for completed turns — narration is
+    // ephemeral, the final reply replaces it
     const usedWebSearch = toolEvents.some((e) => e.toolName === "web_search");
     const count = toolEvents.length;
     let summary = `-# ${EMOJI.tool} Used ${count} tool${count === 1 ? "" : "s"}`;
@@ -198,11 +202,25 @@ export function formatToolStatusMessage(
     return summary;
   }
 
+  // the latest narration renders above the tool tree, standing in for the
+  // final message while the model works; each new narration replaces it
+  const narration = narrations.at(-1);
+  const narrationLines = narration ? [formatNarration(narration.text)] : [];
+
+  if (toolEvents.length === 0) {
+    const bare =
+      lastStatus && isStatusOutput(lastStatus.output)
+        ? `-# ${EMOJI.robot} ${lastStatus.output.status}`
+        : `-# ${EMOJI.loading} ${randomLoadingLine()}`;
+    return [...narrationLines, bare].join("\n");
+  }
+
   // show only recent tail when collapsed, folding older events into a count line
   if (toolEvents.length > COLLAPSE_THRESHOLD) {
     const tail = toolEvents.slice(-COLLAPSE_TAIL);
     const hiddenCount = toolEvents.length - COLLAPSE_TAIL;
     const lines = [
+      ...narrationLines,
       `-# ╭ ··· ${hiddenCount} earlier`,
       ...tail.map((e) => `-# ├ ${formatEventLine(e)}`),
       tailLine,
@@ -210,12 +228,14 @@ export function formatToolStatusMessage(
     return lines.join("\n");
   }
 
-  const lines = toolEvents.map((e, i) => {
-    const prefix = i === 0 ? "╭" : "├";
-    return `-# ${prefix} ${formatEventLine(e)}`;
-  });
-
-  lines.push(tailLine);
+  const lines = [
+    ...narrationLines,
+    ...toolEvents.map((e, i) => {
+      const prefix = i === 0 ? "╭" : "├";
+      return `-# ${prefix} ${formatEventLine(e)}`;
+    }),
+    tailLine,
+  ];
 
   return lines.join("\n");
 }
