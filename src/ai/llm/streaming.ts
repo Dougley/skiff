@@ -242,6 +242,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     userFacts,
     messageContext: ctx.messageContext,
     guildId: toolContext.guildId,
+    channelId: toolContext.channelId,
   });
 
   // two system messages let us put an anthropic cache breakpoint between
@@ -425,14 +426,23 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       // so a tool-only step (cite_sources, etc.) doesn't erase a preceding answer
       if (result.text) finalText = result.text;
 
-      // inject any MCP tools loaded by activate_skill during this step
+      // inject any MCP tools loaded by activate_skill during this step.
+      // skill tools may never shadow tools that already exist (built-ins
+      // or previously loaded MCP tools) — collisions are dropped.
       const pending = Object.keys(pendingSkillTools);
       if (pending.length > 0) {
         logger.debug("chat: injecting skill MCP tools", {
           tools: pending,
         });
-        tools = { ...tools, ...pendingSkillTools };
         for (const key of pending) {
+          if (key in tools) {
+            logger.warn(
+              "chat: skill tool collides with an existing tool — dropping",
+              { tool: key }
+            );
+          } else {
+            tools = { ...tools, [key]: pendingSkillTools[key] };
+          }
           delete pendingSkillTools[key];
         }
       }

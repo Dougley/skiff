@@ -95,54 +95,65 @@ export async function loadMCPConfig(configPath?: string): Promise<MCPConfig> {
 
 const rootMCPClients: MCPClient[] = [];
 
+/**
+ * Create clients for every configured MCP server. A missing or invalid config
+ * and unreachable servers degrade to "no MCP tools" instead of failing the
+ * process — MCP is an optional extension, never a startup dependency.
+ */
 export async function getMCPServers(configPath?: string) {
-  const config = await loadMCPConfig(configPath);
-  const serverConfig = config.mcpServers;
-  if (!serverConfig) {
-    throw new Error("No MCP servers defined in config");
+  let config: MCPConfig;
+  try {
+    config = await loadMCPConfig(configPath);
+  } catch (err) {
+    logger.warn("MCP config not loaded — continuing without MCP tools", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return [];
   }
 
-  const clients = [];
-  for (const server of Object.values(serverConfig)) {
-    switch (server.type) {
-      case "http":
-        clients.push(
-          await createMCPClient({
-            transport: {
-              type: "http",
-              url: server.url,
-              headers: server.headers,
-            },
-          })
-        );
-        break;
-      case "sse":
-        clients.push(
-          await createMCPClient({
-            transport: {
-              type: "sse",
-              url: server.url,
-              headers: server.headers,
-            },
-          })
-        );
-        break;
-      case "stdio":
-        clients.push(
-          await createMCPClient({
-            transport: new StdioClientTransport({
-              command: server.command,
-              args: server.args,
-              env: server.env,
-            }),
-          })
-        );
-        break;
+  const clients: MCPClient[] = [];
+  for (const [name, server] of Object.entries(config.mcpServers)) {
+    try {
+      switch (server.type) {
+        case "http":
+          clients.push(
+            await createMCPClient({
+              transport: {
+                type: "http",
+                url: server.url,
+                headers: server.headers,
+              },
+            })
+          );
+          break;
+        case "sse":
+          clients.push(
+            await createMCPClient({
+              transport: {
+                type: "sse",
+                url: server.url,
+                headers: server.headers,
+              },
+            })
+          );
+          break;
+        case "stdio":
+          clients.push(
+            await createMCPClient({
+              transport: new StdioClientTransport({
+                command: server.command,
+                args: server.args,
+                env: server.env,
+              }),
+            })
+          );
+          break;
+      }
+    } catch (err) {
+      logger.warn(`MCP server "${name}" failed to connect — skipping`, {
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
-  }
-
-  if (clients.length === 0) {
-    throw new Error("No MCP servers created from config");
   }
 
   if (!configPath) {
@@ -159,11 +170,12 @@ export async function createToolset() {
   );
   const tools = toolSets.reduce<Record<string, unknown>>((acc, set) => {
     for (const [name, tool] of Object.entries(set)) {
+      // inter-server collision: first server wins, later ones are dropped
       if (Object.hasOwn(acc, name)) {
-        throw new Error(
-          `MCP tool name collision detected: multiple servers define a tool named "${name}". ` +
-            "Please ensure tool names are unique across MCP servers or implement a conflict resolution strategy."
+        logger.warn(
+          `MCP tool name collision: a later server also defines "${name}" — keeping the first, dropping the duplicate`
         );
+        continue;
       }
       acc[name] = tool;
     }
@@ -172,7 +184,14 @@ export async function createToolset() {
   return tools;
 }
 
-export const mcpConfig = getMCPServers();
+// resolved once at startup; the inner catches make rejection impossible, but
+// guard anyway so a rejected module-level promise can never kill the process
+export const mcpConfig: Promise<MCPClient[]> = getMCPServers().catch((err) => {
+  logger.error("MCP initialization failed — continuing without MCP tools", {
+    err,
+  });
+  return [];
+});
 
 export async function closeMCPClients(): Promise<void> {
   await Promise.allSettled(
