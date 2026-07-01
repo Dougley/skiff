@@ -414,8 +414,10 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       }
 
       if (result.finishReason !== "tool-calls") {
-        // final step — capture whatever text the model produced (may be empty)
-        finalText = result.text;
+        // final step — keep the carried answer if this step produced no text
+        // (common after cite_sources: the model already wrote its reply
+        // alongside the tool call and has nothing to add to the result)
+        if (result.text) finalText = result.text;
         break;
       }
 

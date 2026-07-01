@@ -70,11 +70,19 @@ export interface ConversationTurnParams {
    * already shows its own loading state (e.g. a deferred slash-command reply).
    */
   skipInitialStatus?: boolean;
+  /**
+   * When true, skip embedding and fact extraction for this turn. Used by
+   * system-initiated turns (heartbeat, scheduler) so their prompts don't
+   * pollute semantic memory.
+   */
+  skipMemory?: boolean;
 }
 
 export interface ConversationTurnResult {
   /** The response split into message-sized chunks with their attachments. */
   messages: ParsedMessage[];
+  /** The raw final text from the model, before Discord rendering. */
+  text: string;
   /** Whether any tools were called during this turn. */
   usedTools: boolean;
   /** Number of messages in the conversation history (including this turn). */
@@ -135,6 +143,7 @@ export async function handleConversationTurn(
     images,
     onToolStatus,
     skipInitialStatus,
+    skipMemory,
   } = params;
 
   // conversation & history
@@ -150,17 +159,24 @@ export async function handleConversationTurn(
     userId,
   });
 
-  void enqueueEmbedding({
-    messageId: userMsg.id,
-    conversationId: conversation.id,
-    userId,
-    guildId,
-    content,
-  });
+  if (!skipMemory) {
+    void enqueueEmbedding({
+      messageId: userMsg.id,
+      conversationId: conversation.id,
+      channelId,
+      userId,
+      guildId,
+      content,
+    });
+  }
 
   // LLM call with debounced tool status
   const toolEvents: ToolActivityEvent[] = [];
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // cite_sources is an internal tool — keep it out of every user-facing view
+  const isVisibleEvent = (e: ToolActivityEvent) =>
+    e.type !== "tool" || e.toolName !== "cite_sources";
 
   // Show an immediate "thinking" indicator so the user knows we're working
   // (skipped for slash commands where the deferred reply already shows a loading state)
@@ -173,7 +189,9 @@ export async function handleConversationTurn(
     if (!onToolStatus) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      onToolStatus(formatToolStatusMessage(toolEvents, false));
+      onToolStatus(
+        formatToolStatusMessage(toolEvents.filter(isVisibleEvent), false)
+      );
     }, DEBOUNCE_MS);
   };
 
@@ -219,11 +237,11 @@ export async function handleConversationTurn(
   } catch (err) {
     if (debounceTimer) clearTimeout(debounceTimer);
     if (err instanceof ContextWindowFullError) {
-      const components = markdownToDiscordComponents(
-        `The conversation is too long for me to continue. Use ${clearMention(guildId)} to start a fresh conversation.`
-      );
+      const notice = `The conversation is too long for me to continue. Use ${clearMention(guildId)} to start a fresh conversation.`;
+      const components = markdownToDiscordComponents(notice);
       return {
         messages: splitComponentMessagesWithFiles(components, []),
+        text: notice,
         usedTools: false,
         historyLength: history.length + 1,
       };
@@ -286,22 +304,25 @@ export async function handleConversationTurn(
     });
   }
 
-  void enqueueEmbedding({
-    messageId: assistantMsg.id,
-    conversationId: conversation.id,
-    userId,
-    guildId,
-    content: result.text,
-  });
+  if (!skipMemory) {
+    void enqueueEmbedding({
+      messageId: assistantMsg.id,
+      conversationId: conversation.id,
+      channelId,
+      userId,
+      guildId,
+      content: result.text,
+    });
 
-  void enqueueMemoryExtraction({
-    userText: content,
-    assistantText: result.text,
-    userId,
-    guildId,
-    conversationId: conversation.id,
-    sourceMessageId: assistantMsg.id,
-  });
+    void enqueueMemoryExtraction({
+      userText: content,
+      assistantText: result.text,
+      userId,
+      guildId,
+      conversationId: conversation.id,
+      sourceMessageId: assistantMsg.id,
+    });
+  }
 
   // build response components & split into message-sized chunks
   const { text: latexText, files: latexFiles } = await renderLatex(result.text);
@@ -309,12 +330,9 @@ export async function handleConversationTurn(
   const messages = splitComponentMessagesWithFiles(components, latexFiles);
 
   // Build footer (tool summary + sources + context warning) and append to messages.
-  // cite_sources is an internal tool — exclude it from the user-visible tool summary.
   // Footer components are run through splitComponentMessages to respect Discord limits,
   // then merged into the last content chunk if they fit, or sent as a trailing chunk.
-  const visibleToolEvents = toolEvents.filter(
-    (e) => e.type !== "tool" || e.toolName !== "cite_sources"
-  );
+  const visibleToolEvents = toolEvents.filter(isVisibleEvent);
   const hasToolCalls = visibleToolEvents.some((e) => e.type === "tool");
   const contextWarning = formatContextUsage(result.lastInputTokens);
   if (hasToolCalls || result.sources.length > 0 || contextWarning) {
@@ -362,6 +380,7 @@ export async function handleConversationTurn(
 
   return {
     messages,
+    text: result.text,
     usedTools: toolEvents.length > 0,
     historyLength: history.length + 2,
   };
