@@ -12,6 +12,12 @@ import { z } from "zod";
 import { logger } from "../../config/logger.js";
 import { markdownToDiscordComponents } from "../../utils/markdown-parser.js";
 
+/** A file produced by a tool during a turn, attached to the final reply. */
+export interface TurnAttachment {
+  name: string;
+  data: Buffer;
+}
+
 /**
  * Context passed to tool factories so tools know which guild/channel
  * the current conversation is happening in.
@@ -21,6 +27,11 @@ export interface DiscordToolContext {
   guildId: string | null;
   channelId: string;
   userId?: string | null;
+  /**
+   * Sink for files tools want attached to the reply (e.g. screenshots).
+   * Set by the chat loop at the start of each turn.
+   */
+  attachments?: TurnAttachment[];
   /**
    * Edit the current status message in-place.
    * Used by interactive tools (e.g. ask_questions) to replace the tool-tree

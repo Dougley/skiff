@@ -39,7 +39,7 @@ export async function createToolSet(
     ...(!disabled.has("persona") ? createPersonaTools(ctx) : {}),
     ...(!disabled.has("memory") ? createMemoryTools(ctx) : {}),
     ...(!disabled.has("topic") ? createTopicTools(ctx) : {}),
-    ...(!disabled.has("web") ? createWebTools() : {}),
+    ...(!disabled.has("web") ? createWebTools(ctx) : {}),
     ...(!disabled.has("scheduler") ? createSchedulerTools(ctx) : {}),
     ...(!disabled.has("heartbeat") ? createHeartbeatTools(ctx) : {}),
     ...(env.SHELL_ENABLED && !disabled.has("shell") ? createShellTools() : {}),

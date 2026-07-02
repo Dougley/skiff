@@ -2,6 +2,10 @@ import { tool } from "ai";
 import WebSocket from "ws";
 import { z } from "zod";
 import { env } from "../../config/env.js";
+import type { DiscordToolContext } from "./discord.js";
+
+// leave room under Discord's 10-file message cap for LaTeX renders etc.
+const MAX_SCREENSHOTS_PER_TURN = 9;
 
 // Brave Search rate limiter — 1 request per second sliding window.
 // Queues concurrent calls so they execute sequentially with the required gap.
@@ -474,7 +478,7 @@ async function evaluateInTarget(
   return evaluation?.result?.value;
 }
 
-export const createWebTools = () => {
+export const createWebTools = (ctx?: DiscordToolContext) => {
   return {
     web_search: tool({
       description:
@@ -756,6 +760,25 @@ export const createWebTools = () => {
               format: imageType,
               quality,
             });
+            // attach to the Discord reply instead of returning base64 into
+            // the model context (which burns tokens on data it can't see)
+            const sink = ctx?.attachments;
+            if (sink) {
+              if (sink.length >= MAX_SCREENSHOTS_PER_TURN) {
+                return {
+                  error: `Attachment limit reached for this reply (${MAX_SCREENSHOTS_PER_TURN}).`,
+                };
+              }
+              const filename = `screenshot-${Date.now()}.${imageType === "jpeg" ? "jpg" : "png"}`;
+              sink.push({ name: filename, data: Buffer.from(data, "base64") });
+              return {
+                sessionId: activeSessionId,
+                targetId: target.id,
+                attached: true,
+                filename,
+                note: "Screenshot captured — it will be attached to your reply. Use 'snapshot' if you need to read the page content.",
+              };
+            }
             return {
               sessionId: activeSessionId,
               targetId: target.id,
