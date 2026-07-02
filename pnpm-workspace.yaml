@@ -3,6 +3,7 @@ onlyBuiltDependencies:
   - '['
   - ']'
   - a
+  - esbuild
   - h
   - p
   - r
