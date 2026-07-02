@@ -319,6 +319,7 @@ export async function handleConversationTurn(
       assistantText: result.text,
       userId,
       guildId,
+      channelId,
       conversationId: conversation.id,
       sourceMessageId: assistantMsg.id,
     });

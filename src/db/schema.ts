@@ -57,13 +57,17 @@ export const messages = pgTable(
   ]
 );
 
-// user facts — extracted preferences and information about users
+// user facts — extracted preferences and information about users.
+// three scopes: global (guild_id and channel_id both null — durable quirks,
+// visible everywhere), guild (guild_id set), and channel (channel_id set —
+// DM-only; guild conversations never create or see channel facts)
 export const userFacts = pgTable(
   "user_facts",
   {
     id: serial("id").primaryKey(),
     userId: text("user_id").notNull(),
-    guildId: text("guild_id"), // facts can be guild-scoped or global
+    guildId: text("guild_id"),
+    channelId: text("channel_id"),
     fact: text("fact").notNull(),
     category: text("category"), // e.g. "preference", "personal", "technical", "context"
     confidence: integer("confidence").default(80), // 0-100, for pruning stale/low-quality facts
@@ -79,6 +83,7 @@ export const userFacts = pgTable(
   (t) => [
     index("idx_user_facts_user").on(t.userId),
     index("idx_user_facts_user_guild").on(t.userId, t.guildId),
+    index("idx_user_facts_user_channel").on(t.userId, t.channelId),
     index("idx_user_facts_active").on(t.userId, t.active),
   ]
 );

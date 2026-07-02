@@ -4,7 +4,8 @@ import {
   InteractionContextType,
   MessageFlags,
 } from "discord.js";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { factScopeFilter } from "../../ai/memory/user-facts.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, userFacts } from "../../db/index.js";
@@ -83,10 +84,10 @@ export class MemoryCommand extends Command {
   private async handleList(interaction: Command.ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(eq(userFacts.guildId, guildId), sql`${userFacts.guildId} is null`)
-      : sql`${userFacts.guildId} is null`;
+    const scopeFilter = factScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const rows = await db
       .select({
@@ -99,7 +100,7 @@ export class MemoryCommand extends Command {
         and(
           eq(userFacts.userId, interaction.user.id),
           eq(userFacts.active, true),
-          guildFilter
+          scopeFilter
         )
       )
       .orderBy(desc(userFacts.updatedAt));
@@ -128,10 +129,10 @@ export class MemoryCommand extends Command {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const number = interaction.options.getInteger("number", true);
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(eq(userFacts.guildId, guildId), sql`${userFacts.guildId} is null`)
-      : sql`${userFacts.guildId} is null`;
+    const scopeFilter = factScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const rows = await db
       .select({ id: userFacts.id, fact: userFacts.fact })
@@ -140,7 +141,7 @@ export class MemoryCommand extends Command {
         and(
           eq(userFacts.userId, interaction.user.id),
           eq(userFacts.active, true),
-          guildFilter
+          scopeFilter
         )
       )
       .orderBy(desc(userFacts.updatedAt));
@@ -178,10 +179,10 @@ export class MemoryCommand extends Command {
   ) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(eq(userFacts.guildId, guildId), sql`${userFacts.guildId} is null`)
-      : sql`${userFacts.guildId} is null`;
+    const scopeFilter = factScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const result = await db
       .update(userFacts)
@@ -190,7 +191,7 @@ export class MemoryCommand extends Command {
         and(
           eq(userFacts.userId, interaction.user.id),
           eq(userFacts.active, true),
-          guildFilter
+          scopeFilter
         )
       )
       .returning({ id: userFacts.id });

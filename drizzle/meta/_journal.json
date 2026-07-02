@@ -57,6 +57,13 @@
       "when": 1782949026199,
       "tag": "0007_broken_apocalypse",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1782950475232,
+      "tag": "0008_pretty_eddie_brock",
+      "breakpoints": true
     }
   ]
 }

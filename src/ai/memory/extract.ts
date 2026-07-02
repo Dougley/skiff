@@ -9,7 +9,12 @@ export const userFactSchema = z.object({
   fact: z.string().min(1),
   category: z.string().optional(),
   confidence: z.number().optional(),
-  guildScoped: z.boolean().optional(),
+  /**
+   * global — durable, true everywhere (identity, role, standing quirks).
+   * local — tied to where it was said: the guild in guild channels, the
+   * DM in direct messages. Defaults to local.
+   */
+  scope: z.enum(["global", "local"]).optional(),
 });
 
 export const topicSummarySchema = z.object({
@@ -30,6 +35,8 @@ export type MemoryExtractionInput = {
   assistantText: string;
   userId?: string | null;
   guildId?: string | null;
+  /** Channel the turn happened in — local facts in DMs scope to this. */
+  channelId?: string | null;
   conversationId?: string | null;
   sourceMessageId?: number | null;
 };
@@ -48,6 +55,7 @@ const buildPrompt = (turns: MemoryExtractionInput[]) => {
     "Return only JSON that matches the schema.",
     "Focus on stable user facts and a concise topic summary for the whole conversation.",
     "Ignore transient details, filler, or sensitive info.",
+    "For each fact, pick a scope: 'global' for durable identity-level facts that hold anywhere (e.g. \"xyz is my operator\", timezone, pronouns), 'local' for anything tied to this particular community or conversation (roles here, ongoing projects, in-jokes). When unsure, prefer 'local'.",
     "",
     ...turnBlocks,
   ].join("\n");
@@ -157,6 +165,7 @@ function flushConversation(conversationId: string) {
           extraction,
           userId: userId || null,
           guildId: last?.guildId ?? null,
+          channelId: last?.channelId ?? null,
           sourceMessageId: last?.sourceMessageId ?? null,
           sourceConversationId: conversationId,
         })

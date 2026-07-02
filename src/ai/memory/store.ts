@@ -10,12 +10,15 @@ export type UserFactInput = {
   fact: string;
   category?: string;
   confidence?: number;
-  guildScoped?: boolean;
+  /** global = visible everywhere; local = this guild, or this channel in DMs. */
+  scope?: "global" | "local";
 };
 
 export async function upsertUserFacts(params: {
   userId: string;
   guildId?: string | null;
+  /** Channel the facts came from — local facts in DMs scope to this. */
+  channelId?: string | null;
   sourceMessageId?: number | null;
   facts: UserFactInput[];
 }): Promise<number> {
@@ -24,6 +27,7 @@ export async function upsertUserFacts(params: {
   logger.debug("memory: upserting user facts", {
     userId: params.userId,
     guildId: params.guildId ?? null,
+    channelId: params.channelId ?? null,
     factCount: params.facts.length,
   });
 
@@ -32,11 +36,18 @@ export async function upsertUserFacts(params: {
   await db.transaction(async (tx) => {
     for (const fact of params.facts) {
       const category = fact.category ?? null;
-      const guildId = fact.guildScoped ? (params.guildId ?? null) : null;
+
+      // resolve scope: local facts belong to the guild when there is one,
+      // to the channel in DMs. global facts carry neither.
+      const isLocal = (fact.scope ?? "local") === "local";
+      const guildId = isLocal ? (params.guildId ?? null) : null;
+      const channelId = isLocal && !guildId ? (params.channelId ?? null) : null;
 
       const scopeFilter = guildId
         ? eq(userFacts.guildId, guildId)
-        : sql`${userFacts.guildId} is null`;
+        : channelId
+          ? eq(userFacts.channelId, channelId)
+          : sql`${userFacts.guildId} is null and ${userFacts.channelId} is null`;
 
       // only supersede a restatement of the same fact (normalized text match).
       // never supersede by category — unrelated facts share categories, and
@@ -60,6 +71,7 @@ export async function upsertUserFacts(params: {
         .values({
           userId: params.userId,
           guildId,
+          channelId,
           fact: fact.fact,
           category,
           confidence:
@@ -154,6 +166,7 @@ export async function insertTopicSummary(params: {
 export async function storeExtraction(params: {
   userId?: string | null;
   guildId?: string | null;
+  channelId?: string | null;
   sourceMessageId?: number | null;
   sourceConversationId?: string | null;
   extraction: MemoryExtraction;
@@ -163,6 +176,7 @@ export async function storeExtraction(params: {
   logger.debug("memory: storing extraction", {
     userId: params.userId ?? null,
     guildId: params.guildId ?? null,
+    channelId: params.channelId ?? null,
     userFacts: extraction.userFacts.length,
     hasTopicSummary: Boolean(extraction.topicSummary),
   });
@@ -171,6 +185,7 @@ export async function storeExtraction(params: {
     await upsertUserFacts({
       userId: params.userId,
       guildId: params.guildId,
+      channelId: params.channelId,
       sourceMessageId: params.sourceMessageId ?? null,
       facts: extraction.userFacts,
     });

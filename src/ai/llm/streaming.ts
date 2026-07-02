@@ -230,6 +230,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       userFacts = await fetchUserFacts({
         userId: ctx.userId,
         guildId: toolContext.guildId,
+        channelId: toolContext.channelId,
       });
       logger.debug("user facts loaded", {
         count: userFacts.length,

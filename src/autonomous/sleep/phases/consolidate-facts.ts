@@ -70,9 +70,11 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
         and(
           eq(userFacts.userId, userId),
           eq(userFacts.active, true),
+          // guild runs see guild + global facts; null-scope runs see global
+          // only. channel (DM) facts are never consolidated across scopes.
           ctx.guildId === null
-            ? sql`${userFacts.guildId} is null`
-            : sql`(${userFacts.guildId} = ${ctx.guildId} or ${userFacts.guildId} is null)`
+            ? sql`${userFacts.guildId} is null and ${userFacts.channelId} is null`
+            : sql`(${userFacts.guildId} = ${ctx.guildId} or (${userFacts.guildId} is null and ${userFacts.channelId} is null))`
         )
       )
       .orderBy(desc(userFacts.updatedAt))
