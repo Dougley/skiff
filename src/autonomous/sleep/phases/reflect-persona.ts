@@ -62,10 +62,13 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
     .where(
       and(
         gt(messages.createdAt, cutoff),
-        // null scope means DM/global conversations only — never all guilds
-        ctx.guildId === null
-          ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
-          : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`,
+        // DM scope: that channel only; guild scope: that guild;
+        // legacy null scope: all DM conversations
+        ctx.channelId !== null
+          ? sql`${messages.conversationId} in (select id from conversations where channel_id = ${ctx.channelId})`
+          : ctx.guildId === null
+            ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
+            : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`,
         sql`${messages.content} is not null`
       )
     )
@@ -85,9 +88,12 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
     .where(
       and(
         eq(personaAddenda.active, true),
-        ctx.guildId === null
-          ? sql`${personaAddenda.guildId} is null`
-          : sql`(${personaAddenda.guildId} = ${ctx.guildId} or ${personaAddenda.guildId} is null)`
+        // notes the model shouldn't restate: globals plus this scope's own
+        ctx.channelId !== null
+          ? sql`(${personaAddenda.channelId} = ${ctx.channelId} or (${personaAddenda.guildId} is null and ${personaAddenda.channelId} is null))`
+          : ctx.guildId === null
+            ? sql`${personaAddenda.guildId} is null and ${personaAddenda.channelId} is null`
+            : sql`(${personaAddenda.guildId} = ${ctx.guildId} or (${personaAddenda.guildId} is null and ${personaAddenda.channelId} is null))`
       )
     );
 
@@ -153,6 +159,7 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
       .insert(personaAddenda)
       .values({
         guildId: ctx.guildId,
+        channelId: ctx.channelId,
         text: a.text,
         reason: a.reason,
         confidence: Math.round(a.confidence),
@@ -172,6 +179,6 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
   }
 
   if (!ctx.dryRun && qualified.length > 0) {
-    await refreshAddendaCache(ctx.guildId);
+    await refreshAddendaCache(ctx.guildId, ctx.channelId);
   }
 }

@@ -187,7 +187,7 @@ Skills are able to define their own tools in the form of MCP tool servers. When 
 
 ### Sleep Cycle (Dream Pass)
 
-The sleep cycle is a background maintenance system that runs during idle periods. It consolidates memories, deduplicates knowledge, evolves the persona, and can auto-author new skills. Enabled per-guild via the `/sleep-cycle enable` Discord command. Runs in dry-run mode by default (changes are logged but not applied).
+The sleep cycle is a background maintenance system that runs during idle periods. It consolidates memories, deduplicates knowledge, evolves the persona, and can auto-author new skills. Enabled per-scope via the `/sleep-cycle enable` Discord command — in a server it dreams over that guild's memory, in a DM it dreams over that conversation's own facts, topics, and persona notes. Runs in dry-run mode by default (changes are logged but not applied). Use `/sleep-cycle set-report-channel` to get a digest after each pass (DMs report into the DM by default).
 
 | Variable | Default | Description |
 |----------|---------|-------------|

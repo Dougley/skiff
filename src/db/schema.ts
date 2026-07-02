@@ -1,4 +1,5 @@
 import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   index,
@@ -9,6 +10,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
@@ -186,22 +188,36 @@ export const heartbeatChannels = pgTable("heartbeat_channels", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-// sleep cycle — per-guild settings gating the background "dream" pass
-export const sleepCycleSettings = pgTable("sleep_cycle_settings", {
-  guildId: text("guild_id").primaryKey(),
-  enabled: boolean("enabled").default(false).notNull(),
-  dryRun: boolean("dry_run").default(true).notNull(),
-  autoAuthorSkills: boolean("auto_author_skills").default(false).notNull(),
-  // channel to post a digest to after each scheduled dream pass (null = off)
-  reportChannelId: text("report_channel_id"),
-  lowActivityMinutes: integer("low_activity_minutes").default(60).notNull(),
-  minInactiveMessages: integer("min_inactive_messages").default(3).notNull(),
-  maxRunsPerDay: integer("max_runs_per_day").default(2).notNull(),
-  lastRunAt: timestamp("last_run_at"),
-  nextEligibleAt: timestamp("next_eligible_at").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+// sleep cycle — per-scope settings gating the background "dream" pass.
+// a row is keyed by exactly one of guild_id (guild scope) or channel_id
+// (DM scope); the partial unique indexes enforce one row per scope
+export const sleepCycleSettings = pgTable(
+  "sleep_cycle_settings",
+  {
+    guildId: text("guild_id"),
+    channelId: text("channel_id"),
+    enabled: boolean("enabled").default(false).notNull(),
+    dryRun: boolean("dry_run").default(true).notNull(),
+    autoAuthorSkills: boolean("auto_author_skills").default(false).notNull(),
+    // channel to post a digest to after each scheduled dream pass (null = off)
+    reportChannelId: text("report_channel_id"),
+    lowActivityMinutes: integer("low_activity_minutes").default(60).notNull(),
+    minInactiveMessages: integer("min_inactive_messages").default(3).notNull(),
+    maxRunsPerDay: integer("max_runs_per_day").default(2).notNull(),
+    lastRunAt: timestamp("last_run_at"),
+    nextEligibleAt: timestamp("next_eligible_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("idx_sleep_settings_guild")
+      .on(t.guildId)
+      .where(sql`guild_id is not null`),
+    uniqueIndex("idx_sleep_settings_channel")
+      .on(t.channelId)
+      .where(sql`channel_id is not null`),
+  ]
+);
 
 // sleep cycle — audit log, one row per dream pass
 export const sleepCycleRuns = pgTable(
@@ -209,6 +225,7 @@ export const sleepCycleRuns = pgTable(
   {
     id: serial("id").primaryKey(),
     guildId: text("guild_id"),
+    channelId: text("channel_id"), // set for DM-scoped runs
     startedAt: timestamp("started_at").defaultNow().notNull(),
     finishedAt: timestamp("finished_at"),
     status: text("status").default("running").notNull(), // running|succeeded|failed|skipped
@@ -251,7 +268,8 @@ export const personaAddenda = pgTable(
   "persona_addenda",
   {
     id: serial("id").primaryKey(),
-    guildId: text("guild_id"), // null = global
+    guildId: text("guild_id"), // guild scope; null with channelId null = global
+    channelId: text("channel_id"), // DM scope
     target: text("target"), // null = free-form; else a dotted persona path
     text: text("text").notNull(),
     reason: text("reason"),
@@ -266,6 +284,7 @@ export const personaAddenda = pgTable(
   },
   (t) => [
     index("idx_persona_addenda_guild").on(t.guildId),
+    index("idx_persona_addenda_channel").on(t.channelId),
     index("idx_persona_addenda_active").on(t.active),
   ]
 );

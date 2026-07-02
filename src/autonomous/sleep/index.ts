@@ -107,38 +107,74 @@ async function tick(client: Client): Promise<void> {
 
     if (eligible.length === 0) return;
 
-    // Activity gate: skip guilds whose channels have been active in the
-    // recent window. Compute per-guild counts in one query (grouped over a
-    // VALUES table of (guildId, cutoff)) so this stays O(1) DB roundtrips
-    // regardless of how many guilds opted in.
-    const cutoffPairs = eligible.map(
-      (s) =>
-        sql`(${s.guildId}::text, to_timestamp(${Math.floor(
-          (now.getTime() - s.lowActivityMinutes * 60 * 1000) / 1000
-        )}))`
-    );
-    const valuesClause = sql.join(cutoffPairs, sql`, `);
-    const activityResult = await db.execute(sql`
-      select s.guild_id as "guildId",
-             count(m.id)::int as "n"
-      from (values ${valuesClause}) as s(guild_id, cutoff)
-      left join conversations c on c.guild_id = s.guild_id
-      left join messages m on m.conversation_id = c.id and m.created_at > s.cutoff
-      group by s.guild_id
-    `);
-    const activityRows = (
-      activityResult as unknown as { rows: { guildId: string; n: number }[] }
-    ).rows;
-    const counts = new Map<string, number>(
-      activityRows.map((r) => [r.guildId, Number(r.n)])
+    // A row is keyed by exactly one of guildId (guild scope) or channelId
+    // (DM scope); skip anything malformed.
+    const guildScopes = eligible.filter((s) => s.guildId !== null);
+    const dmScopes = eligible.filter(
+      (s) => s.guildId === null && s.channelId !== null
     );
 
+    // Activity gate: skip scopes with recent activity. Per-scope counts are
+    // computed in one query per kind (grouped over a VALUES table of
+    // (id, cutoff)) so this stays O(1) DB roundtrips regardless of opt-ins.
+    const cutoffTs = (s: (typeof eligible)[number]) =>
+      Math.floor((now.getTime() - s.lowActivityMinutes * 60 * 1000) / 1000);
+
+    const guildCounts = new Map<string, number>();
+    if (guildScopes.length > 0) {
+      const pairs = guildScopes.map(
+        (s) => sql`(${s.guildId}::text, to_timestamp(${cutoffTs(s)}))`
+      );
+      const result = await db.execute(sql`
+        select v.guild_id as "id",
+               count(m.id)::int as "n"
+        from (values ${sql.join(pairs, sql`, `)}) as v(guild_id, cutoff)
+        left join conversations c on c.guild_id = v.guild_id
+        left join messages m on m.conversation_id = c.id and m.created_at > v.cutoff
+        group by v.guild_id
+      `);
+      for (const r of (
+        result as unknown as { rows: { id: string; n: number }[] }
+      ).rows) {
+        guildCounts.set(r.id, Number(r.n));
+      }
+    }
+
+    const channelCounts = new Map<string, number>();
+    if (dmScopes.length > 0) {
+      const pairs = dmScopes.map(
+        (s) => sql`(${s.channelId}::text, to_timestamp(${cutoffTs(s)}))`
+      );
+      const result = await db.execute(sql`
+        select v.channel_id as "id",
+               count(m.id)::int as "n"
+        from (values ${sql.join(pairs, sql`, `)}) as v(channel_id, cutoff)
+        left join conversations c on c.channel_id = v.channel_id
+        left join messages m on m.conversation_id = c.id and m.created_at > v.cutoff
+        group by v.channel_id
+      `);
+      for (const r of (
+        result as unknown as { rows: { id: string; n: number }[] }
+      ).rows) {
+        channelCounts.set(r.id, Number(r.n));
+      }
+    }
+
+    const scopeKey = (s: (typeof eligible)[number]) =>
+      s.guildId ?? `dm:${s.channelId}`;
+    const scopeFilter = (s: (typeof eligible)[number]) =>
+      s.guildId
+        ? eq(sleepCycleSettings.guildId, s.guildId)
+        : eq(sleepCycleSettings.channelId, s.channelId as string);
+
     const toRun: typeof eligible = [];
-    for (const s of eligible) {
-      const activeCount = counts.get(s.guildId) ?? 0;
+    for (const s of [...guildScopes, ...dmScopes]) {
+      const activeCount = s.guildId
+        ? (guildCounts.get(s.guildId) ?? 0)
+        : (channelCounts.get(s.channelId as string) ?? 0);
       if (activeCount > s.minInactiveMessages) {
-        logger.debug("sleep: guild still active, deferring", {
-          guildId: s.guildId,
+        logger.debug("sleep: scope still active, deferring", {
+          scope: scopeKey(s),
           activeCount,
           threshold: s.minInactiveMessages,
         });
@@ -161,29 +197,30 @@ async function tick(client: Client): Promise<void> {
         .set({ nextEligibleAt: leaseUntil })
         .where(
           and(
-            eq(sleepCycleSettings.guildId, s.guildId),
+            scopeFilter(s),
             eq(sleepCycleSettings.enabled, true),
             lte(sleepCycleSettings.nextEligibleAt, now)
           )
         )
-        .returning({ guildId: sleepCycleSettings.guildId });
-      if (rows[0]) claimedIds.add(rows[0].guildId);
+        .returning({ enabled: sleepCycleSettings.enabled });
+      if (rows.length > 0) claimedIds.add(scopeKey(s));
     }
 
     if (claimedIds.size === 0) return;
 
     for (const s of toRun) {
-      if (!claimedIds.has(s.guildId)) continue;
+      if (!claimedIds.has(scopeKey(s))) continue;
       try {
         const result = await executeDreamPass({
           guildId: s.guildId,
+          channelId: s.channelId,
           triggerReason: "scheduled",
         });
         if (s.reportChannelId) {
           await sendDreamReport(client, s.reportChannelId, result);
         }
       } catch (err) {
-        logger.warn("sleep: dream pass threw", { guildId: s.guildId, err });
+        logger.warn("sleep: dream pass threw", { scope: scopeKey(s), err });
       }
 
       const spacing = Math.max(
@@ -198,7 +235,7 @@ async function tick(client: Client): Promise<void> {
           nextEligibleAt: next,
           updatedAt: new Date(),
         })
-        .where(eq(sleepCycleSettings.guildId, s.guildId));
+        .where(scopeFilter(s));
     }
   } catch (err) {
     logger.error("sleep: tick failed", { err });

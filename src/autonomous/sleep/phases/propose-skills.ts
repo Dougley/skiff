@@ -65,10 +65,13 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
         gt(messages.createdAt, cutoff),
         sql`${messages.role} = 'user'`,
         sql`${messages.content} is not null`,
-        // null scope means DM/global conversations only — never all guilds
-        ctx.guildId === null
-          ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
-          : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
+        // DM scope: that channel only; guild scope: that guild;
+        // legacy null scope: all DM conversations
+        ctx.channelId !== null
+          ? sql`${messages.conversationId} in (select id from conversations where channel_id = ${ctx.channelId})`
+          : ctx.guildId === null
+            ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
+            : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
       )
     )
     .orderBy(desc(messages.createdAt))

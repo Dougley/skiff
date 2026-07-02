@@ -48,11 +48,13 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
     .where(
       and(
         eq(topicKnowledge.active, true),
-        // null-scope runs only touch legacy/global topics — channel (DM)
-        // topics are never merged across different DMs
-        ctx.guildId === null
-          ? sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`
-          : eq(topicKnowledge.guildId, ctx.guildId),
+        // DM runs dedupe that channel's topics; legacy null-scope runs only
+        // touch legacy/global topics — never across different DMs
+        ctx.channelId !== null
+          ? eq(topicKnowledge.channelId, ctx.channelId)
+          : ctx.guildId === null
+            ? sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`
+            : eq(topicKnowledge.guildId, ctx.guildId),
         sql`${topicKnowledge.embedding} is not null`
       )
     )

@@ -21,6 +21,9 @@ import {
   sleepCycleSettings,
 } from "../../db/index.js";
 
+// a dream scope is exactly one of: a guild, or a DM channel
+type SleepScope = { guildId: string | null; channelId: string | null };
+
 export class SleepCycleCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
     super(context, { ...options, preconditions: ["AccessAllowlist"] });
@@ -131,61 +134,80 @@ export class SleepCycleCommand extends Command {
           .setContexts([InteractionContextType.Guild])
       );
     }
+
+    registry.registerChatInputCommand((b) =>
+      buildBase(b)
+        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setContexts([
+          InteractionContextType.Guild,
+          InteractionContextType.BotDM,
+          InteractionContextType.PrivateChannel,
+        ])
+    );
   }
 
   public override async chatInputRun(
     interaction: Command.ChatInputCommandInteraction
   ) {
-    const guildId = interaction.guildId;
-    if (!guildId) {
-      await interaction.reply({
-        content: "The sleep cycle is guild-scoped. Run this inside a server.",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+    // guild channels dream at guild scope; DMs dream at channel scope
+    const scope: SleepScope = interaction.guildId
+      ? { guildId: interaction.guildId, channelId: null }
+      : { guildId: null, channelId: interaction.channelId };
 
     const sub = interaction.options.getSubcommand(true);
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     switch (sub) {
       case "enable":
-        return this.handleEnable(interaction, guildId);
+        return this.handleEnable(interaction, scope);
       case "disable":
-        return this.handleDisable(interaction, guildId);
+        return this.handleDisable(interaction, scope);
       case "status":
-        return this.handleStatus(interaction, guildId);
+        return this.handleStatus(interaction, scope);
       case "run-now":
-        return this.handleRunNow(interaction, guildId);
+        return this.handleRunNow(interaction, scope);
       case "changes":
-        return this.handleChanges(interaction, guildId);
+        return this.handleChanges(interaction, scope);
       case "rollback":
-        return this.handleRollback(interaction, guildId);
+        return this.handleRollback(interaction, scope);
       case "set-dry-run":
         return this.handleSet(
           interaction,
-          guildId,
+          scope,
           "dryRun",
           interaction.options.getBoolean("value", true)
         );
       case "set-auto-skills":
         return this.handleSet(
           interaction,
-          guildId,
+          scope,
           "autoAuthorSkills",
           interaction.options.getBoolean("value", true)
         );
       case "set-report-channel":
-        return this.handleSetReportChannel(interaction, guildId);
+        return this.handleSetReportChannel(interaction, scope);
     }
+  }
+
+  private settingsFilter(scope: SleepScope) {
+    return scope.guildId
+      ? eq(sleepCycleSettings.guildId, scope.guildId)
+      : eq(sleepCycleSettings.channelId, scope.channelId as string);
+  }
+
+  private runsFilter(scope: SleepScope) {
+    return scope.guildId
+      ? eq(sleepCycleRuns.guildId, scope.guildId)
+      : eq(sleepCycleRuns.channelId, scope.channelId as string);
   }
 
   private async handleSetReportChannel(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
+    // omitting the channel disables reports (DM enables default them back on)
     const channel = interaction.options.getChannel("channel");
-    await this.upsert(guildId, { reportChannelId: channel?.id ?? null });
+    await this.upsert(scope, { reportChannelId: channel?.id ?? null });
     await interaction.editReply(
       channel
         ? `Dream reports will be posted to <#${channel.id}> after each scheduled pass.`
@@ -194,23 +216,33 @@ export class SleepCycleCommand extends Command {
   }
 
   private async upsert(
-    guildId: string,
+    scope: SleepScope,
     patch: Partial<typeof sleepCycleSettings.$inferInsert>
   ) {
-    await db
-      .insert(sleepCycleSettings)
-      .values({ guildId, ...patch })
-      .onConflictDoUpdate({
-        target: sleepCycleSettings.guildId,
-        set: { ...patch, updatedAt: new Date() },
+    const updated = await db
+      .update(sleepCycleSettings)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(this.settingsFilter(scope))
+      .returning({ enabled: sleepCycleSettings.enabled });
+    if (updated.length === 0) {
+      await db.insert(sleepCycleSettings).values({
+        guildId: scope.guildId,
+        channelId: scope.channelId,
+        ...patch,
       });
+    }
   }
 
   private async handleEnable(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
-    await this.upsert(guildId, { enabled: true, dryRun: true });
+    await this.upsert(scope, {
+      enabled: true,
+      dryRun: true,
+      // DM dreams report into the DM itself by default
+      ...(scope.channelId ? { reportChannelId: scope.channelId } : {}),
+    });
     await interaction.editReply(
       "Sleep cycle enabled in dry-run mode. Use `/sleep-cycle set-dry-run value:false` to let it mutate state."
     );
@@ -218,20 +250,20 @@ export class SleepCycleCommand extends Command {
 
   private async handleDisable(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
-    await this.upsert(guildId, { enabled: false });
+    await this.upsert(scope, { enabled: false });
     await interaction.editReply("Sleep cycle disabled.");
   }
 
   private async handleStatus(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
     const [settings] = await db
       .select()
       .from(sleepCycleSettings)
-      .where(eq(sleepCycleSettings.guildId, guildId))
+      .where(this.settingsFilter(scope))
       .limit(1);
 
     const runs = await db
@@ -244,13 +276,15 @@ export class SleepCycleCommand extends Command {
         trigger: sleepCycleRuns.triggerReason,
       })
       .from(sleepCycleRuns)
-      .where(eq(sleepCycleRuns.guildId, guildId))
+      .where(this.runsFilter(scope))
       .orderBy(desc(sleepCycleRuns.startedAt))
       .limit(5);
 
     const lines: string[] = [];
     if (!settings) {
-      lines.push("Sleep cycle is not configured for this guild.");
+      lines.push(
+        `Sleep cycle is not configured for this ${scope.guildId ? "guild" : "DM"}.`
+      );
     } else {
       lines.push(
         `**Enabled**: ${settings.enabled} · **Dry run**: ${settings.dryRun} · **Auto skills**: ${settings.autoAuthorSkills} · **Reports**: ${settings.reportChannelId ? `<#${settings.reportChannelId}>` : "off"}`,
@@ -274,13 +308,17 @@ export class SleepCycleCommand extends Command {
 
   private async handleRunNow(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
     const forceDry = interaction.options.getBoolean("dry") ?? undefined;
-    logger.info(`sleep: manual run-now by ${interaction.user.id}`, { guildId });
+    logger.info(`sleep: manual run-now by ${interaction.user.id}`, {
+      guildId: scope.guildId,
+      channelId: scope.channelId,
+    });
 
     const result = await executeDreamPass({
-      guildId,
+      guildId: scope.guildId,
+      channelId: scope.channelId,
       triggerReason: "manual",
       forceDryRun: forceDry,
     });
@@ -305,19 +343,17 @@ export class SleepCycleCommand extends Command {
 
   private async handleChanges(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
     const runId = interaction.options.getInteger("run-id", true);
-    // verify the run belongs to this guild
+    // verify the run belongs to this scope
     const [run] = await db
       .select()
       .from(sleepCycleRuns)
-      .where(
-        and(eq(sleepCycleRuns.id, runId), eq(sleepCycleRuns.guildId, guildId))
-      )
+      .where(and(eq(sleepCycleRuns.id, runId), this.runsFilter(scope)))
       .limit(1);
     if (!run) {
-      await interaction.editReply(`Run #${runId} not found for this guild.`);
+      await interaction.editReply(`Run #${runId} not found for this scope.`);
       return;
     }
 
@@ -349,7 +385,7 @@ export class SleepCycleCommand extends Command {
 
   private async handleRollback(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string
+    scope: SleepScope
   ) {
     const runId = interaction.options.getInteger("run-id") ?? null;
     const changeId = interaction.options.getInteger("change-id") ?? null;
@@ -365,12 +401,10 @@ export class SleepCycleCommand extends Command {
       const [run] = await db
         .select()
         .from(sleepCycleRuns)
-        .where(
-          and(eq(sleepCycleRuns.id, runId), eq(sleepCycleRuns.guildId, guildId))
-        )
+        .where(and(eq(sleepCycleRuns.id, runId), this.runsFilter(scope)))
         .limit(1);
       if (!run) {
-        await interaction.editReply(`Run #${runId} not found for this guild.`);
+        await interaction.editReply(`Run #${runId} not found for this scope.`);
         return;
       }
       const result = await rollbackRun(runId);
@@ -381,9 +415,12 @@ export class SleepCycleCommand extends Command {
     }
 
     if (changeId !== null) {
-      // verify change belongs to a run in this guild
+      // verify change belongs to a run in this scope
       const [row] = await db
-        .select({ runGuild: sleepCycleRuns.guildId })
+        .select({
+          runGuild: sleepCycleRuns.guildId,
+          runChannel: sleepCycleRuns.channelId,
+        })
         .from(sleepCycleChanges)
         .leftJoin(
           sleepCycleRuns,
@@ -391,9 +428,13 @@ export class SleepCycleCommand extends Command {
         )
         .where(eq(sleepCycleChanges.id, changeId))
         .limit(1);
-      if (!row || row.runGuild !== guildId) {
+      if (
+        !row ||
+        row.runGuild !== scope.guildId ||
+        row.runChannel !== scope.channelId
+      ) {
         await interaction.editReply(
-          `Change #${changeId} not found for this guild.`
+          `Change #${changeId} not found for this scope.`
         );
         return;
       }
@@ -406,11 +447,11 @@ export class SleepCycleCommand extends Command {
 
   private async handleSet(
     interaction: Command.ChatInputCommandInteraction,
-    guildId: string,
+    scope: SleepScope,
     key: "dryRun" | "autoAuthorSkills",
     value: boolean
   ) {
-    await this.upsert(guildId, { [key]: value });
+    await this.upsert(scope, { [key]: value });
     await interaction.editReply(`Set \`${key}\` = \`${value}\`.`);
   }
 }

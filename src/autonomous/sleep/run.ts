@@ -10,8 +10,10 @@ import { synthesizeTopics } from "./phases/synthesize-topics.js";
 
 export type RunOptions = {
   guildId: string | null;
+  /** DM channel scope; set for DM-scoped dream passes. */
+  channelId?: string | null;
   triggerReason: "scheduled" | "manual" | "test";
-  /** Override the guild's dryRun setting (used by `/sleep-cycle run-now --dry`). */
+  /** Override the scope's dryRun setting (used by `/sleep-cycle run-now --dry`). */
   forceDryRun?: boolean;
   /** Override the autoAuthorSkills gate. */
   forceAutoAuthorSkills?: boolean;
@@ -33,13 +35,15 @@ export type RunResult = {
 export async function executeDreamPass(
   options: RunOptions
 ): Promise<RunResult> {
-  const settings = options.guildId
+  const channelId = options.channelId ?? null;
+  const scopeFilter = channelId
+    ? eq(sleepCycleSettings.channelId, channelId)
+    : options.guildId
+      ? eq(sleepCycleSettings.guildId, options.guildId)
+      : null;
+  const settings = scopeFilter
     ? (
-        await db
-          .select()
-          .from(sleepCycleSettings)
-          .where(eq(sleepCycleSettings.guildId, options.guildId))
-          .limit(1)
+        await db.select().from(sleepCycleSettings).where(scopeFilter).limit(1)
       )[0]
     : null;
 
@@ -56,6 +60,7 @@ export async function executeDreamPass(
     .insert(sleepCycleRuns)
     .values({
       guildId: options.guildId,
+      channelId,
       status: "running",
       dryRun,
       triggerReason: options.triggerReason,
@@ -69,6 +74,7 @@ export async function executeDreamPass(
   const ctx: DreamContext = {
     runId: run.id,
     guildId: options.guildId,
+    channelId,
     dryRun,
     phaseStats: {},
     tokenUsage: 0,
@@ -78,6 +84,7 @@ export async function executeDreamPass(
   logger.info("sleep: dream pass starting", {
     runId: run.id,
     guildId: options.guildId,
+    channelId,
     dryRun,
     trigger: options.triggerReason,
   });

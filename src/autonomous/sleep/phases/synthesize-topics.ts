@@ -48,9 +48,12 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
     .from(messageEmbeddings)
     .where(
       and(
-        ctx.guildId === null
-          ? sql`${messageEmbeddings.guildId} is null`
-          : eq(messageEmbeddings.guildId, ctx.guildId),
+        // DM scope clusters only that channel's embeddings
+        ctx.channelId !== null
+          ? eq(messageEmbeddings.channelId, ctx.channelId)
+          : ctx.guildId === null
+            ? sql`${messageEmbeddings.guildId} is null`
+            : eq(messageEmbeddings.guildId, ctx.guildId),
         gt(messageEmbeddings.createdAt, cutoff)
       )
     )
@@ -76,11 +79,12 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
     .where(
       and(
         eq(topicKnowledge.active, true),
-        // null-scope runs compare against legacy/global topics only,
-        // matching where their synthesized topics land
-        ctx.guildId === null
-          ? sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`
-          : eq(topicKnowledge.guildId, ctx.guildId),
+        // compare against topics in the same scope the synthesized ones land in
+        ctx.channelId !== null
+          ? eq(topicKnowledge.channelId, ctx.channelId)
+          : ctx.guildId === null
+            ? sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`
+            : eq(topicKnowledge.guildId, ctx.guildId),
         sql`${topicKnowledge.embedding} is not null`
       )
     );
@@ -166,6 +170,7 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
     if (!ctx.dryRun) {
       const inserted = await insertTopicSummary({
         guildId: ctx.guildId,
+        channelId: ctx.channelId,
         createdByUserId: null,
         sourceConversationId: null,
         summary: {

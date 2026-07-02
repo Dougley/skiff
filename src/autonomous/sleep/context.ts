@@ -3,7 +3,10 @@ import { db, sleepCycleChanges } from "../../db/index.js";
 
 export type DreamContext = {
   runId: number;
+  /** Guild scope; null for DM-scoped or legacy-global runs. */
   guildId: string | null;
+  /** DM channel scope; set only for DM-scoped runs. */
+  channelId: string | null;
   dryRun: boolean;
   phaseStats: Record<string, Record<string, number>>;
   tokenUsage: number;

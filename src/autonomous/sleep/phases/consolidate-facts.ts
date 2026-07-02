@@ -47,9 +47,13 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
         gt(messages.createdAt, cutoff),
         sql`${messages.userId} is not null`,
         eq(messages.role, "user"),
-        ctx.guildId === null
-          ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
-          : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
+        // DM scope: that channel only; guild scope: that guild;
+        // legacy null scope: all DM conversations
+        ctx.channelId !== null
+          ? sql`${messages.conversationId} in (select id from conversations where channel_id = ${ctx.channelId})`
+          : ctx.guildId === null
+            ? sql`${messages.conversationId} in (select id from conversations where guild_id is null)`
+            : sql`${messages.conversationId} in (select id from conversations where guild_id = ${ctx.guildId})`
       )
     )
     .limit(SLEEP_CONSOLIDATE_MAX_USERS);
@@ -70,11 +74,13 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
         and(
           eq(userFacts.userId, userId),
           eq(userFacts.active, true),
-          // guild runs see guild + global facts; null-scope runs see global
-          // only. channel (DM) facts are never consolidated across scopes.
-          ctx.guildId === null
-            ? sql`${userFacts.guildId} is null and ${userFacts.channelId} is null`
-            : sql`(${userFacts.guildId} = ${ctx.guildId} or (${userFacts.guildId} is null and ${userFacts.channelId} is null))`
+          // each scope consolidates its own facts plus the user's globals;
+          // channel (DM) facts are never consolidated across scopes
+          ctx.channelId !== null
+            ? sql`(${userFacts.channelId} = ${ctx.channelId} or (${userFacts.guildId} is null and ${userFacts.channelId} is null))`
+            : ctx.guildId === null
+              ? sql`${userFacts.guildId} is null and ${userFacts.channelId} is null`
+              : sql`(${userFacts.guildId} = ${ctx.guildId} or (${userFacts.guildId} is null and ${userFacts.channelId} is null))`
         )
       )
       .orderBy(desc(userFacts.updatedAt))
