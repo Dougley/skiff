@@ -14,6 +14,8 @@ type SystemPromptOptions = {
   guildId?: string | null;
   /** Channel ID for channel-scoped persona overrides (set_persona_part). */
   channelId?: string | null;
+  /** Rolling summary of compacted (no longer visible) conversation history. */
+  conversationSummary?: string | null;
 };
 
 /**
@@ -117,6 +119,14 @@ export const getSystemPrompt = (
     `Current time: ${now.toISOString()}`,
     `Model: ${env.LLM_DEFAULT_MODEL}`
   );
+
+  if (options?.conversationSummary) {
+    variableParts.push(
+      "\n## Earlier Conversation Summary",
+      "Older messages were compacted into this summary; treat it as established context, not something to repeat back.",
+      options.conversationSummary
+    );
+  }
 
   const userFacts = options?.userFacts ?? [];
   if (userFacts.length > 0) {

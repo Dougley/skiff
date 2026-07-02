@@ -24,6 +24,10 @@ export const conversations = pgTable(
     guildId: text("guild_id"),
     model: text("model").notNull(),
     systemPrompt: text("system_prompt"),
+    // rolling compaction: summary of messages up to (and including)
+    // summary_up_to_message_id, which are excluded from the prompt history
+    summary: text("summary"),
+    summaryUpToMessageId: integer("summary_up_to_message_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -188,6 +192,8 @@ export const sleepCycleSettings = pgTable("sleep_cycle_settings", {
   enabled: boolean("enabled").default(false).notNull(),
   dryRun: boolean("dry_run").default(true).notNull(),
   autoAuthorSkills: boolean("auto_author_skills").default(false).notNull(),
+  // channel to post a digest to after each scheduled dream pass (null = off)
+  reportChannelId: text("report_channel_id"),
   lowActivityMinutes: integer("low_activity_minutes").default(60).notNull(),
   minInactiveMessages: integer("min_inactive_messages").default(3).notNull(),
   maxRunsPerDay: integer("max_runs_per_day").default(2).notNull(),

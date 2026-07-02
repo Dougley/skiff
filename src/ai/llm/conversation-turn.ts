@@ -1,6 +1,7 @@
 import type { ImagePart, ModelMessage } from "@ai-sdk/provider-utils";
 import { container } from "@sapphire/framework";
 import {
+  AttachmentBuilder,
   SeparatorBuilder,
   SeparatorSpacingSize,
   TextDisplayBuilder,
@@ -24,6 +25,7 @@ import {
   formatContextUsage,
   formatToolStatusMessage,
 } from "../../utils/tool-status.js";
+import { compactConversation, shouldCompact } from "../memory/compaction.js";
 import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
@@ -146,9 +148,14 @@ export async function handleConversationTurn(
     skipMemory,
   } = params;
 
-  // conversation & history
+  // conversation & history (rows already folded into the compaction summary
+  // are excluded; the summary itself is injected into the system prompt)
   const conversation = await getOrCreateConversation({ channelId, guildId });
-  const history = await getRecentMessages(conversation.id);
+  const history = await getRecentMessages(
+    conversation.id,
+    undefined,
+    conversation.summaryUpToMessageId
+  );
   const priorInputTokens = await getLastAssistantInputTokens(conversation.id);
 
   // persist user message
@@ -224,19 +231,53 @@ export async function handleConversationTurn(
         }
       : { role: "user" as const, content: `${senderMeta}\n${content}` };
 
-  let result: Awaited<ReturnType<typeof chatWithLLM>>;
-  try {
-    result = await chatWithLLM({
-      messages: [...historyToMessages(history), currentUserMessage],
+  const runChat = (
+    hist: Awaited<ReturnType<typeof getRecentMessages>>,
+    summary: string | null,
+    priorTokens: number | null
+  ) =>
+    chatWithLLM({
+      messages: [...historyToMessages(hist), currentUserMessage],
       userId,
       toolContext,
       messageContext,
       onToolActivity,
-      priorInputTokens,
+      priorInputTokens: priorTokens,
+      conversationSummary: summary,
     });
+
+  // when the context wall is hit, compact the history into the rolling
+  // summary and retry once; only give up if even that doesn't fit
+  const retryAfterCompaction = async () => {
+    if (!(await compactConversation(conversation.id))) return null;
+    const fresh = await getOrCreateConversation({ channelId, guildId });
+    const freshHistory = await getRecentMessages(
+      conversation.id,
+      undefined,
+      fresh.summaryUpToMessageId
+    );
+    try {
+      return await runChat(freshHistory, fresh.summary, null);
+    } catch (retryErr) {
+      if (retryErr instanceof ContextWindowFullError) return null;
+      throw retryErr;
+    }
+  };
+
+  let result: Awaited<ReturnType<typeof chatWithLLM>>;
+  try {
+    result = await runChat(history, conversation.summary, priorInputTokens);
   } catch (err) {
-    if (debounceTimer) clearTimeout(debounceTimer);
-    if (err instanceof ContextWindowFullError) {
+    if (!(err instanceof ContextWindowFullError)) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      throw err;
+    }
+    logger.info("context window full — compacting and retrying", {
+      channelId,
+    });
+    const recovered = await retryAfterCompaction();
+    if (!recovered) {
+      if (debounceTimer) clearTimeout(debounceTimer);
       const notice = `The conversation is too long for me to continue. Use ${clearMention(guildId)} to start a fresh conversation.`;
       const components = markdownToDiscordComponents(notice);
       return {
@@ -246,7 +287,7 @@ export async function handleConversationTurn(
         historyLength: history.length + 1,
       };
     }
-    throw err;
+    result = recovered;
   }
 
   // Cancel any pending debounce so it doesn't fire after we send the response
@@ -369,6 +410,33 @@ export async function handleConversationTurn(
       // doesn't fit — start a new trailing chunk
       messages.push({ components: footerComponents, files: [] });
     }
+  }
+
+  // attach tool-produced files (screenshots etc.) to the reply
+  if (result.attachments.length > 0) {
+    const builders = result.attachments.map(
+      (a) => new AttachmentBuilder(a.data, { name: a.name })
+    );
+    const last = messages[messages.length - 1];
+    if (last && last.files.length + builders.length <= 10) {
+      last.files.push(...builders);
+    } else {
+      // no text chunk or too many files — send them as their own chunk
+      messages.push({
+        components: [
+          new TextDisplayBuilder().setContent(
+            `-# 📎 ${builders.length} attachment${builders.length === 1 ? "" : "s"}`
+          ),
+        ],
+        files: builders.slice(0, 10),
+      });
+    }
+  }
+
+  // proactive compaction: fold older history into the rolling summary in the
+  // background once the context is half full, before the wall is ever hit
+  if (shouldCompact(result.lastInputTokens)) {
+    void compactConversation(conversation.id);
   }
 
   logger.debug("conversation turn complete", {

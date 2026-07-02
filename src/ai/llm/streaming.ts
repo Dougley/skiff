@@ -13,7 +13,7 @@ import {
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { fetchUserFacts } from "../memory/user-facts.js";
-import type { DiscordToolContext } from "../tools/discord.js";
+import type { DiscordToolContext, TurnAttachment } from "../tools/discord.js";
 import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import { llmProvider } from "./provider.js";
@@ -128,6 +128,8 @@ export interface ChatContext {
   messageContext?: MessageContext;
   /** Provider-reported input tokens from the previous turn in this conversation. */
   priorInputTokens?: number | null;
+  /** Rolling summary of compacted conversation history, injected into the prompt. */
+  conversationSummary?: string | null;
   /**
    * Called after each tool execution so the caller can update a
    * "working on it…" message in Discord with live status.
@@ -163,6 +165,8 @@ export interface ChatResult {
   stepCount: number;
   /** Sources recorded via cite_sources during this turn. */
   sources: SourceRef[];
+  /** Files produced by tools this turn (e.g. screenshots), to attach to the reply. */
+  attachments: TurnAttachment[];
 }
 
 // constants
@@ -214,6 +218,9 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   const pendingSkillTools: Record<string, unknown> = {};
   const openSkillClients: MCPClient[] = [];
   const collectedSources: SourceRef[] = [];
+  // fresh sink each turn so tool-produced files land on this turn's reply
+  const collectedAttachments: TurnAttachment[] = [];
+  toolContext.attachments = collectedAttachments;
   let tools = {
     ...(await createToolSet(toolContext, pendingSkillTools, openSkillClients)),
     ...createSourcesTools(collectedSources),
@@ -244,6 +251,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     messageContext: ctx.messageContext,
     guildId: toolContext.guildId,
     channelId: toolContext.channelId,
+    conversationSummary: ctx.conversationSummary,
   });
 
   // two system messages let us put an anthropic cache breakpoint between
@@ -479,5 +487,6 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     finishReason: finalFinishReason,
     stepCount: stepCounter,
     sources: collectedSources,
+    attachments: collectedAttachments,
   };
 }

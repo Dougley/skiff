@@ -71,6 +71,13 @@
       "when": 1782950693499,
       "tag": "0009_strange_naoko",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1782951432794,
+      "tag": "0010_watery_changeling",
+      "breakpoints": true
     }
   ]
 }
