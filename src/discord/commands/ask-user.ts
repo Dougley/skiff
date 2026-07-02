@@ -30,19 +30,18 @@ export class AskUserCommand extends Command {
         },
         { guildIds: [env.GUILD_ID] }
       );
-    } else {
-      registry.registerContextMenuCommand({
-        name: "Ask about user",
-        type: ApplicationCommandType.User,
-        integrationTypes: [ApplicationIntegrationType.GuildInstall],
-        contexts: [InteractionContextType.Guild],
-      });
     }
 
+    // one global registration carrying both install types — registering the
+    // same name twice with different integration types makes Sapphire PATCH
+    // the command back and forth on every boot
     registry.registerContextMenuCommand({
       name: "Ask about user",
       type: ApplicationCommandType.User,
-      integrationTypes: [ApplicationIntegrationType.UserInstall],
+      integrationTypes: [
+        ApplicationIntegrationType.GuildInstall,
+        ApplicationIntegrationType.UserInstall,
+      ],
       contexts: [
         InteractionContextType.Guild,
         InteractionContextType.BotDM,

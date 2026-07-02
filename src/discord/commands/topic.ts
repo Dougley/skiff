@@ -50,17 +50,17 @@ export class TopicCommand extends Command {
       registry.registerChatInputCommand((builder) => buildBase(builder), {
         guildIds: [env.GUILD_ID],
       });
-    } else {
-      registry.registerChatInputCommand((builder) =>
-        buildBase(builder)
-          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-          .setContexts([InteractionContextType.Guild])
-      );
     }
 
+    // one global registration carrying both install types — registering the
+    // same name twice with different integration types makes Sapphire PATCH
+    // the command back and forth on every boot
     registry.registerChatInputCommand((builder) =>
       buildBase(builder)
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setIntegrationTypes([
+          ApplicationIntegrationType.GuildInstall,
+          ApplicationIntegrationType.UserInstall,
+        ])
         .setContexts([
           InteractionContextType.Guild,
           InteractionContextType.BotDM,

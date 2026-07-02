@@ -132,17 +132,17 @@ export class SleepCycleCommand extends Command {
       registry.registerChatInputCommand((b) => buildBase(b), {
         guildIds: [env.GUILD_ID],
       });
-    } else {
-      registry.registerChatInputCommand((b) =>
-        buildBase(b)
-          .setIntegrationTypes([ApplicationIntegrationType.GuildInstall])
-          .setContexts([InteractionContextType.Guild])
-      );
     }
 
+    // one global registration carrying both install types — registering the
+    // same name twice with different integration types makes Sapphire PATCH
+    // the command back and forth on every boot
     registry.registerChatInputCommand((b) =>
       buildBase(b)
-        .setIntegrationTypes([ApplicationIntegrationType.UserInstall])
+        .setIntegrationTypes([
+          ApplicationIntegrationType.GuildInstall,
+          ApplicationIntegrationType.UserInstall,
+        ])
         .setContexts([
           InteractionContextType.Guild,
           InteractionContextType.BotDM,
