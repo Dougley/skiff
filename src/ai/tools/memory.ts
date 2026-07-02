@@ -6,6 +6,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, messageEmbeddings, messages } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { upsertUserFacts } from "../memory/store.js";
 import {
   normalizeEmbeddingDimensions,
   toVectorLiteral,
@@ -80,6 +81,44 @@ function buildSimilarityQuery(
 }
 
 export const createMemoryTools = (ctx: DiscordToolContext) => ({
+  memory_save: tool({
+    description:
+      "Save a durable fact about the current user — when they explicitly ask you to remember something, or share something clearly worth keeping. Saved facts appear in your context in future conversations. Don't save transient or sensitive details.",
+    inputSchema: z.object({
+      fact: z
+        .string()
+        .min(1)
+        .max(500)
+        .describe(
+          "The fact, phrased in third person (e.g. 'Prefers concise answers')."
+        ),
+      category: z
+        .string()
+        .optional()
+        .describe(
+          "Optional category, e.g. 'preference', 'personal', 'technical'."
+        ),
+      scope: z
+        .enum(["global", "local"])
+        .default("local")
+        .describe(
+          "global: identity-level, true everywhere (timezone, pronouns, 'xyz is my operator'). local: tied to this server or DM (roles here, ongoing projects)."
+        ),
+    }),
+    execute: async ({ fact, category, scope }) => {
+      if (!ctx.userId) {
+        return { error: "No user in context to attach the fact to." };
+      }
+      const count = await upsertUserFacts({
+        userId: ctx.userId,
+        guildId: ctx.guildId,
+        channelId: ctx.channelId,
+        facts: [{ fact, category, scope, confidence: 95 }],
+      });
+      return { saved: count > 0, fact, scope };
+    },
+  }),
+
   memory_search: tool({
     description:
       "Search conversation memory with semantic similarity. Use when you need relevant past context.",
