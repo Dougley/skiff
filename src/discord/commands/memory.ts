@@ -9,10 +9,15 @@ import { factScopeFilter } from "../../ai/memory/user-facts.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, userFacts } from "../../db/index.js";
+import { CommandHintKey } from "../command-id-hints.js";
 
 export class MemoryCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
-    super(context, { ...options, preconditions: ["AccessAllowlist"] });
+    super(context, {
+      ...options,
+      preconditions: ["AccessAllowlist"],
+      idHintKey: CommandHintKey.Memory,
+    });
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {

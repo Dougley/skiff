@@ -17,6 +17,7 @@ import { colors, logger } from "./config/logger.js";
 import { client as pgClient } from "./db/index.js";
 import { runMigrations } from "./db/migrate.js";
 import { client, startClient } from "./discord/client.js";
+import { loadIdHintStore } from "./discord/command-id-hints.js";
 
 function printBanner(metrics: {
   agentName: string;
@@ -74,6 +75,8 @@ async function main() {
 
   await runMigrations();
   await loadAddendaCache();
+  // hints must be in memory before login triggers command registration
+  await loadIdHintStore();
   await startClient();
 
   // Wait for the client ready event (guild cache populated)

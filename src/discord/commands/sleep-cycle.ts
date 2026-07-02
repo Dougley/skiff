@@ -20,13 +20,18 @@ import {
   sleepCycleRuns,
   sleepCycleSettings,
 } from "../../db/index.js";
+import { CommandHintKey } from "../command-id-hints.js";
 
 // a dream scope is exactly one of: a guild, or a DM channel
 type SleepScope = { guildId: string | null; channelId: string | null };
 
 export class SleepCycleCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
-    super(context, { ...options, preconditions: ["AccessAllowlist"] });
+    super(context, {
+      ...options,
+      preconditions: ["AccessAllowlist"],
+      idHintKey: CommandHintKey.SleepCycle,
+    });
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {

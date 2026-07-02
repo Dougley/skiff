@@ -2,6 +2,10 @@ import { SapphireClient } from "@sapphire/framework";
 import { GatewayIntentBits, Partials } from "discord.js";
 import { env } from "../config/env.js";
 import { logger } from "../config/logger.js";
+import { installIdHintInjection } from "./command-id-hints.js";
+
+// must run before commands register so stored idHints are injected
+installIdHintInjection();
 
 const client = new SapphireClient({
   intents: [

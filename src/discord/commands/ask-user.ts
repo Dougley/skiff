@@ -10,10 +10,15 @@ import {
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { CommandHintKey } from "../command-id-hints.js";
 
 export class AskUserCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
-    super(context, { ...options, preconditions: ["AccessAllowlist"] });
+    super(context, {
+      ...options,
+      preconditions: ["AccessAllowlist"],
+      idHintKey: CommandHintKey.AskUser,
+    });
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {

@@ -179,6 +179,14 @@ export const scheduledTasks = pgTable(
   ]
 );
 
+// sapphire idHints — Discord command ids assigned at registration, replayed
+// as idHints on the next startup so renamed commands don't create duplicates
+export const commandIdHints = pgTable("command_id_hints", {
+  commandName: text("command_name").primaryKey(),
+  ids: text("ids").array().notNull().default([]),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const heartbeatChannels = pgTable("heartbeat_channels", {
   id: serial("id").primaryKey(),
   guildId: text("guild_id"),

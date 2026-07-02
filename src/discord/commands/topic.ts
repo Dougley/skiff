@@ -9,10 +9,15 @@ import { topicScopeFilter } from "../../ai/tools/topic.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, topicKnowledge } from "../../db/index.js";
+import { CommandHintKey } from "../command-id-hints.js";
 
 export class TopicCommand extends Command {
   public constructor(context: Command.LoaderContext, options: Command.Options) {
-    super(context, { ...options, preconditions: ["AccessAllowlist"] });
+    super(context, {
+      ...options,
+      preconditions: ["AccessAllowlist"],
+      idHintKey: CommandHintKey.Topic,
+    });
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
