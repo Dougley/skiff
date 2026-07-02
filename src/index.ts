@@ -103,7 +103,7 @@ async function main() {
   // Start both scheduler (for cron tasks) and heartbeat (for periodic checks)
   startScheduler(ready);
   startHeartbeat(ready);
-  startSleepCycle();
+  startSleepCycle(ready);
 }
 
 function registerShutdownHandlers() {

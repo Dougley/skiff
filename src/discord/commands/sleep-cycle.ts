@@ -108,6 +108,16 @@ export class SleepCycleCommand extends Command {
                 .setDescription("true or false")
                 .setRequired(true)
             )
+        )
+        .addSubcommand((s) =>
+          s
+            .setName("set-report-channel")
+            .setDescription(
+              "Post a digest after each scheduled dream pass (omit channel to disable)"
+            )
+            .addChannelOption((o) =>
+              o.setName("channel").setDescription("Channel for dream reports")
+            )
         );
 
     if (env.GUILD_ID) {
@@ -165,7 +175,22 @@ export class SleepCycleCommand extends Command {
           "autoAuthorSkills",
           interaction.options.getBoolean("value", true)
         );
+      case "set-report-channel":
+        return this.handleSetReportChannel(interaction, guildId);
     }
+  }
+
+  private async handleSetReportChannel(
+    interaction: Command.ChatInputCommandInteraction,
+    guildId: string
+  ) {
+    const channel = interaction.options.getChannel("channel");
+    await this.upsert(guildId, { reportChannelId: channel?.id ?? null });
+    await interaction.editReply(
+      channel
+        ? `Dream reports will be posted to <#${channel.id}> after each scheduled pass.`
+        : "Dream reports disabled."
+    );
   }
 
   private async upsert(
@@ -228,7 +253,7 @@ export class SleepCycleCommand extends Command {
       lines.push("Sleep cycle is not configured for this guild.");
     } else {
       lines.push(
-        `**Enabled**: ${settings.enabled} · **Dry run**: ${settings.dryRun} · **Auto skills**: ${settings.autoAuthorSkills}`,
+        `**Enabled**: ${settings.enabled} · **Dry run**: ${settings.dryRun} · **Auto skills**: ${settings.autoAuthorSkills} · **Reports**: ${settings.reportChannelId ? `<#${settings.reportChannelId}>` : "off"}`,
         `**Activity gate**: <= ${settings.minInactiveMessages} msgs in last ${settings.lowActivityMinutes}m`,
         `**Max runs/day**: ${settings.maxRunsPerDay}`,
         `**Last run**: ${settings.lastRunAt?.toISOString() ?? "never"} · **Next eligible**: ${settings.nextEligibleAt?.toISOString() ?? "unknown"}`

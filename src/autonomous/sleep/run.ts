@@ -20,6 +20,7 @@ export type RunOptions = {
 export type RunResult = {
   runId: number;
   status: "succeeded" | "failed";
+  dryRun: boolean;
   phaseStats: Record<string, Record<string, number>>;
   error?: string;
 };
@@ -111,6 +112,7 @@ export async function executeDreamPass(
     return {
       runId: run.id,
       status: "succeeded",
+      dryRun,
       phaseStats: ctx.phaseStats,
     };
   } catch (err) {
@@ -129,6 +131,7 @@ export async function executeDreamPass(
     return {
       runId: run.id,
       status: "failed",
+      dryRun,
       phaseStats: ctx.phaseStats,
       error: message,
     };

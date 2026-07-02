@@ -1,7 +1,8 @@
+import type { Client } from "discord.js";
 import { and, eq, lte, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
 import { db, sleepCycleSettings } from "../../db/index.js";
-import { executeDreamPass } from "./run.js";
+import { executeDreamPass, type RunResult } from "./run.js";
 
 const TICK_INTERVAL_MS = 5 * 60 * 1000;
 const MIN_COOLDOWN_MS = 60 * 60 * 1000;
@@ -10,13 +11,71 @@ const CLAIM_LEASE_MS = 30 * 60 * 1000;
 let tickHandle: ReturnType<typeof setInterval> | null = null;
 let ticking = false;
 
-export function startSleepCycle(): void {
+export function startSleepCycle(client: Client): void {
   if (tickHandle) return;
   logger.info("Sleep cycle scheduler started", {
     intervalMinutes: TICK_INTERVAL_MS / 60000,
   });
-  void tick();
-  tickHandle = setInterval(() => void tick(), TICK_INTERVAL_MS);
+  void tick(client);
+  tickHandle = setInterval(() => void tick(client), TICK_INTERVAL_MS);
+}
+
+// digest of what a dream pass did, posted to the configured report channel.
+// returns null for uneventful runs so quiet nights don't produce noise.
+function formatDreamReport(result: RunResult): string | null {
+  if (result.status === "failed") {
+    return `🌙 Dream pass #${result.runId} failed: ${result.error ?? "unknown error"}`;
+  }
+
+  const n = (phase: string, key: string) =>
+    result.phaseStats[phase]?.[key] ?? 0;
+  const plural = (count: number, word: string) =>
+    `${count} ${word}${count === 1 ? "" : "s"}`;
+
+  const parts: string[] = [];
+  const resolutions = n("consolidate_facts", "resolutions");
+  if (resolutions)
+    parts.push(`resolved ${plural(resolutions, "fact conflict")}`);
+  const merges = n("dedupe_topics", "merges");
+  if (merges) parts.push(`merged ${plural(merges, "duplicate topic")}`);
+  const created = n("synthesize_topics", "topicsCreated");
+  if (created) parts.push(`learned ${plural(created, "new topic")}`);
+  const addenda =
+    n("reflect_persona", "addendaWritten") ||
+    n("reflect_persona", "addendaLogged");
+  if (addenda) parts.push(`wrote ${plural(addenda, "persona note")}`);
+  const skills =
+    n("propose_skills", "skillsAuthored") ||
+    n("propose_skills", "proposalsPending");
+  if (skills) parts.push(`${plural(skills, "skill proposal")}`);
+
+  if (parts.length === 0) return null;
+
+  const dry = result.dryRun ? " (dry run — nothing applied)" : "";
+  const lines = [
+    `🌙 Dream pass #${result.runId}${dry}: ${parts.join(", ")}.`,
+    `-# \`/sleep-cycle changes run-id:${result.runId}\` to review${result.dryRun ? "" : ` · \`/sleep-cycle rollback run-id:${result.runId}\` to revert`}`,
+  ];
+  return lines.join("\n");
+}
+
+async function sendDreamReport(
+  client: Client,
+  channelId: string,
+  result: RunResult
+): Promise<void> {
+  const report = formatDreamReport(result);
+  if (!report) return;
+  try {
+    const channel = await client.channels.fetch(channelId);
+    if (!channel?.isSendable()) {
+      logger.warn("sleep: report channel not sendable", { channelId });
+      return;
+    }
+    await channel.send(report);
+  } catch (err) {
+    logger.warn("sleep: failed to send dream report", { channelId, err });
+  }
 }
 
 export function stopSleepCycle(): void {
@@ -27,7 +86,7 @@ export function stopSleepCycle(): void {
   }
 }
 
-async function tick(): Promise<void> {
+async function tick(client: Client): Promise<void> {
   if (ticking) {
     logger.debug("sleep: previous tick still running, skipping");
     return;
@@ -116,10 +175,13 @@ async function tick(): Promise<void> {
     for (const s of toRun) {
       if (!claimedIds.has(s.guildId)) continue;
       try {
-        await executeDreamPass({
+        const result = await executeDreamPass({
           guildId: s.guildId,
           triggerReason: "scheduled",
         });
+        if (s.reportChannelId) {
+          await sendDreamReport(client, s.reportChannelId, result);
+        }
       } catch (err) {
         logger.warn("sleep: dream pass threw", { guildId: s.guildId, err });
       }
