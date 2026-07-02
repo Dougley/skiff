@@ -1,6 +1,6 @@
 import { tool } from "@ai-sdk/provider-utils";
 import { type Embedding, embed } from "ai";
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
@@ -29,9 +29,27 @@ type TopicSearchResult = {
     | "db_error";
 };
 
+/**
+ * Scope visibility for topic knowledge: guilds see only their own topics;
+ * DMs see that channel's topics plus legacy/global (both-null) entries.
+ * Guild knowledge never leaks into DMs and vice versa.
+ */
+export function topicScopeFilter(
+  guildId: string | null,
+  channelId?: string | null
+) {
+  if (guildId) return eq(topicKnowledge.guildId, guildId);
+  const legacyGlobal = sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`;
+  if (channelId) {
+    return or(eq(topicKnowledge.channelId, channelId), legacyGlobal);
+  }
+  return legacyGlobal;
+}
+
 async function queryTopics(
   embedding: Embedding,
-  guildId: string | null
+  guildId: string | null,
+  channelId: string | null
 ): Promise<TopicMatch[]> {
   const vector = sql`${toVectorLiteral(normalizeEmbeddingDimensions(embedding))}::vector`;
   const distance = sql<number>`(${topicKnowledge.embedding} <=> ${vector})`;
@@ -50,10 +68,7 @@ async function queryTopics(
       and(
         eq(topicKnowledge.active, true),
         sql`${topicKnowledge.embedding} is not null`,
-        // DMs only see DM-scoped topics — guild knowledge must not leak out
-        guildId
-          ? eq(topicKnowledge.guildId, guildId)
-          : isNull(topicKnowledge.guildId),
+        topicScopeFilter(guildId, channelId),
         sql`${similarity} >= ${env.RAG_MIN_SIMILARITY}`
       )
     )
@@ -102,7 +117,11 @@ export const createTopicTools = (ctx: DiscordToolContext) => ({
       }
 
       try {
-        const results = await queryTopics(embedding, ctx.guildId ?? null);
+        const results = await queryTopics(
+          embedding,
+          ctx.guildId ?? null,
+          ctx.channelId ?? null
+        );
         logger.debug("topic_search results", {
           resultCount: results.length,
         });

@@ -76,8 +76,10 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
     .where(
       and(
         eq(topicKnowledge.active, true),
+        // null-scope runs compare against legacy/global topics only,
+        // matching where their synthesized topics land
         ctx.guildId === null
-          ? sql`${topicKnowledge.guildId} is null`
+          ? sql`${topicKnowledge.guildId} is null and ${topicKnowledge.channelId} is null`
           : eq(topicKnowledge.guildId, ctx.guildId),
         sql`${topicKnowledge.embedding} is not null`
       )

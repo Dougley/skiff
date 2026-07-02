@@ -4,7 +4,8 @@ import {
   InteractionContextType,
   MessageFlags,
 } from "discord.js";
-import { and, desc, eq, or, sql } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
+import { topicScopeFilter } from "../../ai/tools/topic.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, topicKnowledge } from "../../db/index.js";
@@ -81,13 +82,10 @@ export class TopicCommand extends Command {
   private async handleList(interaction: Command.ChatInputCommandInteraction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(
-          eq(topicKnowledge.guildId, guildId),
-          sql`${topicKnowledge.guildId} is null`
-        )
-      : sql`${topicKnowledge.guildId} is null`;
+    const scopeFilter = topicScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const rows = await db
       .select({
@@ -97,7 +95,7 @@ export class TopicCommand extends Command {
         tags: topicKnowledge.tags,
       })
       .from(topicKnowledge)
-      .where(and(eq(topicKnowledge.active, true), guildFilter))
+      .where(and(eq(topicKnowledge.active, true), scopeFilter))
       .orderBy(desc(topicKnowledge.updatedAt));
 
     if (rows.length === 0) {
@@ -122,18 +120,15 @@ export class TopicCommand extends Command {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const number = interaction.options.getInteger("number", true);
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(
-          eq(topicKnowledge.guildId, guildId),
-          sql`${topicKnowledge.guildId} is null`
-        )
-      : sql`${topicKnowledge.guildId} is null`;
+    const scopeFilter = topicScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const rows = await db
       .select({ id: topicKnowledge.id, title: topicKnowledge.title })
       .from(topicKnowledge)
-      .where(and(eq(topicKnowledge.active, true), guildFilter))
+      .where(and(eq(topicKnowledge.active, true), scopeFilter))
       .orderBy(desc(topicKnowledge.updatedAt));
 
     if (number < 1 || number > rows.length) {
@@ -169,18 +164,15 @@ export class TopicCommand extends Command {
   ) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const guildId = interaction.guildId;
-    const guildFilter = guildId
-      ? or(
-          eq(topicKnowledge.guildId, guildId),
-          sql`${topicKnowledge.guildId} is null`
-        )
-      : sql`${topicKnowledge.guildId} is null`;
+    const scopeFilter = topicScopeFilter(
+      interaction.guildId,
+      interaction.channelId
+    );
 
     const result = await db
       .update(topicKnowledge)
       .set({ active: false, updatedAt: new Date() })
-      .where(and(eq(topicKnowledge.active, true), guildFilter))
+      .where(and(eq(topicKnowledge.active, true), scopeFilter))
       .returning({ id: topicKnowledge.id });
 
     if (result.length === 0) {

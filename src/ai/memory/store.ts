@@ -110,16 +110,24 @@ export async function upsertUserFacts(params: {
 
 export async function insertTopicSummary(params: {
   guildId?: string | null;
+  /** Channel the topic came from — DM topics scope to this. */
+  channelId?: string | null;
   createdByUserId?: string | null;
   sourceConversationId?: string | null;
   summary: NonNullable<MemoryExtraction["topicSummary"]>;
 }): Promise<{ id: number } | null> {
   const summary = params.summary;
 
+  // topics are always local to where they were discussed: the guild when
+  // there is one, otherwise the DM channel
+  const guildId = params.guildId ?? null;
+  const channelId = guildId ? null : (params.channelId ?? null);
+
   logger.debug("memory: inserting topic summary", {
     title: summary.title,
     tagCount: summary.tags?.length ?? 0,
-    guildId: params.guildId ?? null,
+    guildId,
+    channelId,
   });
 
   const model = embeddingProvider;
@@ -149,7 +157,8 @@ export async function insertTopicSummary(params: {
       title: summary.title,
       summary: summary.summary,
       tags: summary.tags ?? [],
-      guildId: params.guildId ?? null,
+      guildId,
+      channelId,
       createdByUserId: params.createdByUserId ?? null,
       sourceConversationId: params.sourceConversationId ?? null,
       embedding,
@@ -194,6 +203,7 @@ export async function storeExtraction(params: {
   if (extraction.topicSummary) {
     await insertTopicSummary({
       guildId: params.guildId ?? null,
+      channelId: params.channelId ?? null,
       createdByUserId: params.userId ?? null,
       sourceConversationId: params.sourceConversationId ?? null,
       summary: extraction.topicSummary,

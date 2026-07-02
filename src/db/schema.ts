@@ -117,7 +117,9 @@ export const messageEmbeddings = pgTable(
   ]
 );
 
-// topic knowledge — structured knowledge about subjects discussed
+// topic knowledge — structured knowledge about subjects discussed.
+// scoped like user facts: guild (guild_id set), channel (channel_id set —
+// DM conversations), or legacy/global (both null, visible in DMs only)
 export const topicKnowledge = pgTable(
   "topic_knowledge",
   {
@@ -126,6 +128,7 @@ export const topicKnowledge = pgTable(
     summary: text("summary").notNull(),
     tags: text("tags").array().notNull().default([]),
     guildId: text("guild_id"),
+    channelId: text("channel_id"),
     createdByUserId: text("created_by_user_id"),
     sourceConversationId: uuid("source_conversation_id").references(
       () => conversations.id,
@@ -140,6 +143,7 @@ export const topicKnowledge = pgTable(
   },
   (t) => [
     index("idx_topic_knowledge_guild").on(t.guildId),
+    index("idx_topic_knowledge_channel").on(t.channelId),
     index("idx_topic_knowledge_active").on(t.active),
   ]
 );
