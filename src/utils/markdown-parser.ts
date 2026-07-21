@@ -29,12 +29,24 @@ function splitCodeFence(fenceLines: string[]): string[] {
   const full = fenceLines.join("\n");
   if (full.length <= MAX_TEXT_CHARS_PER_MESSAGE) return [full];
 
-  const openLine = fenceLines[0];
+  const openLine = fenceLines[0] ?? "```";
   const lastLine = fenceLines[fenceLines.length - 1] ?? "";
   const isClosed =
     fenceLines.length > 1 && lastLine.trimStart().startsWith("```");
   const closeLine = "```";
-  const bodyLines = isClosed ? fenceLines.slice(1, -1) : fenceLines.slice(1);
+  const rawBodyLines = isClosed ? fenceLines.slice(1, -1) : fenceLines.slice(1);
+  const bodyLimit = Math.max(
+    1,
+    MAX_TEXT_CHARS_PER_MESSAGE - openLine.length - closeLine.length - 2
+  );
+  const bodyLines = rawBodyLines.flatMap((line) => {
+    if (line.length <= bodyLimit) return [line];
+    const pieces: string[] = [];
+    for (let offset = 0; offset < line.length; offset += bodyLimit) {
+      pieces.push(line.slice(offset, offset + bodyLimit));
+    }
+    return pieces;
+  });
 
   const result: string[] = [];
   let chunk: string[] = [];
@@ -250,26 +262,34 @@ function pushGallery(
   components: TopLevelComponent[],
   images: { url: string; alt: string }[]
 ) {
-  const valid = images.filter((img) => VALID_MEDIA_URL_REGEX.test(img.url));
-  if (valid.length === 0) {
-    // Fall back to text with markdown links for invalid URLs
-    const text = images
-      .map((img) => (img.alt ? `[${img.alt}](${img.url})` : img.url))
-      .join("\n");
-    components.push(new TextDisplayBuilder().setContent(text));
-    return;
-  }
+  let validRun: { url: string; alt: string }[] = [];
+  const flushValidRun = () => {
+    for (let i = 0; i < validRun.length; i += MAX_GALLERY_ITEMS) {
+      const chunk = validRun.slice(i, i + MAX_GALLERY_ITEMS);
+      const gallery = new MediaGalleryBuilder();
+      const items: APIMediaGalleryItem[] = chunk.map((img) => ({
+        media: { url: img.url },
+        description: img.alt.slice(0, 1024) || undefined,
+      }));
+      gallery.addItems(...items);
+      components.push(gallery);
+    }
+    validRun = [];
+  };
 
-  for (let i = 0; i < valid.length; i += MAX_GALLERY_ITEMS) {
-    const chunk = valid.slice(i, i + MAX_GALLERY_ITEMS);
-    const gallery = new MediaGalleryBuilder();
-    const items: APIMediaGalleryItem[] = chunk.map((img) => ({
-      media: { url: img.url },
-      description: img.alt.slice(0, 1024) || undefined,
-    }));
-    gallery.addItems(...items);
-    components.push(gallery);
+  for (const image of images) {
+    if (VALID_MEDIA_URL_REGEX.test(image.url)) {
+      validRun.push(image);
+      continue;
+    }
+
+    flushValidRun();
+    const fallback = image.alt ? `[${image.alt}](${image.url})` : image.url;
+    for (const chunk of splitLargeText(fallback)) {
+      components.push(new TextDisplayBuilder().setContent(chunk));
+    }
   }
+  flushValidRun();
 }
 
 /**
@@ -313,7 +333,25 @@ export function splitComponentMessagesWithFiles(
   components: TopLevelComponent[],
   allFiles: import("discord.js").AttachmentBuilder[]
 ): ParsedMessage[] {
-  const rawChunks = splitComponentMessages(components);
+  const rawChunks = splitComponentMessages(components).flatMap((chunk) => {
+    const fileSafeChunks: TopLevelComponent[][] = [];
+    let current: TopLevelComponent[] = [];
+    let currentFiles = new Set<string>();
+
+    for (const component of chunk) {
+      const componentFiles = extractAttachmentFilenames([component]);
+      const combined = new Set([...currentFiles, ...componentFiles]);
+      if (current.length > 0 && combined.size > 10) {
+        fileSafeChunks.push(current);
+        current = [];
+        currentFiles = new Set();
+      }
+      current.push(component);
+      for (const name of componentFiles) currentFiles.add(name);
+    }
+    if (current.length > 0) fileSafeChunks.push(current);
+    return fileSafeChunks;
+  });
   const fileByName = new Map(allFiles.map((f) => [f.name, f]));
 
   return rawChunks.map((chunk) => {

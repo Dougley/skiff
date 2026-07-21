@@ -49,19 +49,22 @@ export function createSourcesTools(collectedSources: SourceRef[]) {
         "Use inline superscript characters (¹ ² ³ ⁴ ⁵...) in your text to mark each citation, " +
         "and pass the matching index (1, 2, 3...) here.",
       inputSchema: z.object({
-        sources: z.array(
-          z.object({
-            index: z
-              .number()
-              .int()
-              .min(1)
-              .describe("The citation index (1 for ¹, 2 for ², etc.)"),
-            url: z.string().min(1).describe("Source URL"),
-            title: z
-              .string()
-              .describe("Short descriptive title for the source"),
-          })
-        ),
+        sources: z
+          .array(
+            z.object({
+              index: z
+                .number()
+                .int()
+                .min(1)
+                .describe("The citation index (1 for ¹, 2 for ², etc.)"),
+              url: z.string().min(1).max(2048).describe("Source URL"),
+              title: z
+                .string()
+                .max(200)
+                .describe("Short descriptive title for the source"),
+            })
+          )
+          .max(20),
       }),
       execute: async ({ sources }) => {
         // normalize URLs and skip unsalvageable or already-recorded ones, so

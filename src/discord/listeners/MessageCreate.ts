@@ -15,6 +15,7 @@ import {
 import { checkAccess, getAccessConfig } from "../../config/access.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { createLatestUpdateQueue } from "../../utils/latest-update-queue.js";
 
 const IMAGE_CONTENT_TYPES = new Set([
   "image/png",
@@ -169,6 +170,28 @@ export class MessagesListener extends Listener {
         message: null,
         pending: null,
       };
+      const statusUpdates = createLatestUpdateQueue<string>(
+        async (statusText) => {
+          if (status.pending) await status.pending;
+          const options = {
+            flags: MessageFlags.IsComponentsV2,
+            components: [new TextDisplayBuilder().setContent(statusText)],
+          } as const;
+          if (status.message) {
+            await status.message.edit(options);
+            return;
+          }
+
+          const pending = message.reply(options);
+          status.pending = pending;
+          try {
+            status.message = await pending;
+          } finally {
+            if (status.pending === pending) status.pending = null;
+          }
+        },
+        (err) => logger.warn("Failed to update tool status", { err })
+      );
 
       const channelName =
         "name" in message.channel ? `#${message.channel.name}` : "DM";
@@ -214,37 +237,13 @@ export class MessagesListener extends Listener {
           isDM,
         },
         onToolStatus(statusText) {
-          if (status.message) {
-            status.message
-              .edit({
-                flags: MessageFlags.IsComponentsV2,
-                components: [new TextDisplayBuilder().setContent(statusText)],
-              })
-              .catch((err) =>
-                logger.warn("Failed to update tool status", { err })
-              );
-          } else if (!status.pending) {
-            status.pending = message
-              .reply({
-                flags: MessageFlags.IsComponentsV2,
-                components: [new TextDisplayBuilder().setContent(statusText)],
-              })
-              .then((msg) => {
-                status.message = msg;
-                return msg;
-              })
-              .catch((err) => {
-                logger.warn("Failed to send tool status", { err });
-                return null;
-              });
-          }
+          statusUpdates.push(statusText);
         },
       });
 
-      // Wait for any in-flight status reply to resolve
-      if (status.pending) {
-        await status.pending;
-      }
+      // Drain status edits before replacing the status with the final answer.
+      // Otherwise a slow edit can land afterward and overwrite the response.
+      await statusUpdates.flush();
 
       const [first, ...rest] = result.messages;
       if (!first) {

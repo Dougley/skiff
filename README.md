@@ -73,6 +73,8 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `OLLAMA_API_KEY` | -- | Ollama API key (if needed) |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
 | `VISION_ENABLED` | `true` | Enable/disable vision (image) support |
+| `LLM_MAX_OUTPUT_TOKENS` | `8192` | Maximum output tokens requested per generation step |
+| `LLM_TURN_TIMEOUT_MS` | `180000` | Overall timeout for one conversational turn |
 
 ### Memory & RAG
 

@@ -58,6 +58,13 @@ export const environmentVariableSchema = z.object({
   SHELL_WORK_DIR: z.string().default("/home/skiff"),
   SHELL_ALLOWED_DIRS: z.string().default("/tmp"),
   CONTEXT_WINDOW_SIZE: z.coerce.number().int().min(1).default(200_000),
+  LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).default(8192),
+  LLM_TURN_TIMEOUT_MS: z.coerce
+    .number()
+    .int()
+    .min(10_000)
+    .max(15 * 60_000)
+    .default(180_000),
   HEARTBEAT_ENABLED: z
     .enum(["true", "false"])
     .default("true")

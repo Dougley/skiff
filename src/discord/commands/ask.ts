@@ -9,6 +9,7 @@ import {
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { createLatestUpdateQueue } from "../../utils/latest-update-queue.js";
 import { CommandHintKey } from "../command-id-hints.js";
 
 export class AskCommand extends Command {
@@ -72,6 +73,15 @@ export class AskCommand extends Command {
           .fetch(interaction.user.id)
           .catch(() => null)
       : null;
+    const statusUpdates = createLatestUpdateQueue<string>(
+      async (statusText) => {
+        await interaction.editReply({
+          flags: MessageFlags.IsComponentsV2,
+          components: [new TextDisplayBuilder().setContent(statusText)],
+        });
+      },
+      (err) => logger.warn("Failed to update tool status", { err })
+    );
 
     const result = await handleConversationTurn({
       content: question,
@@ -105,14 +115,11 @@ export class AskCommand extends Command {
         isDM: !interaction.guildId,
       },
       onToolStatus(statusText) {
-        interaction
-          .editReply({
-            flags: MessageFlags.IsComponentsV2,
-            components: [new TextDisplayBuilder().setContent(statusText)],
-          })
-          .catch((err) => logger.warn("Failed to update tool status", { err }));
+        statusUpdates.push(statusText);
       },
     });
+
+    await statusUpdates.flush();
 
     const [first, ...rest] = result.messages;
     if (!first) {

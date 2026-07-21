@@ -160,7 +160,7 @@ type TextEvent = Extract<ToolActivityEvent, { type: "text" }>;
 const isToolEvent = (e: ToolActivityEvent): e is ToolEvent => e.type === "tool";
 const isTextEvent = (e: ToolActivityEvent): e is TextEvent => e.type === "text";
 
-// cap each narration snippet so a chatty step can't blow the 4000-char TextDisplay limit
+// Cap narration so a chatty step cannot exceed Discord's TextDisplay limit.
 const NARRATION_MAX_CHARS = 500;
 
 function formatNarration(text: string): string {
@@ -202,8 +202,9 @@ export function formatToolStatusMessage(
     return summary;
   }
 
-  // the latest narration renders above the tool tree, standing in for the
-  // final message while the model works; each new narration replaces it
+  // A narration event contains the complete text for that model step, so keep
+  // its internal newlines intact. A later tool round intentionally replaces
+  // the earlier narration with its newer progress update.
   const narration = narrations.at(-1);
   const narrationLines = narration ? [formatNarration(narration.text)] : [];
 

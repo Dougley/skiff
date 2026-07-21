@@ -7,8 +7,10 @@ import type {
 import {
   APICallError,
   generateText,
+  type LanguageModel,
   type LanguageModelUsage,
   stepCountIs,
+  type ToolSet,
 } from "ai";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
@@ -78,7 +80,12 @@ function tagLastMessageForCaching(messages: ModelMessage[]): ModelMessage[] {
 
 // thrown when the conversation history is too long to safely call the LLM
 export class ContextWindowFullError extends Error {
-  constructor(estimatedTokens: number, contextWindowSize: number) {
+  constructor(
+    estimatedTokens: number,
+    contextWindowSize: number,
+    /** Retrying is unsafe after tools have already produced side effects. */
+    public readonly retrySafe = true
+  ) {
     super(
       `estimated input tokens (${estimatedTokens}) near context window limit (${contextWindowSize})`
     );
@@ -142,6 +149,10 @@ export interface ChatContext {
   maxSteps?: number;
   /** Optional AbortSignal to cancel the request. */
   abortSignal?: AbortSignal;
+  /** Model override used by tests and specialized callers. */
+  model?: LanguageModel;
+  /** Tool-set override used by tests and specialized callers. */
+  toolSet?: ToolSet;
 }
 
 /** A response message from the LLM (assistant text/tool-calls, or tool results). */
@@ -172,14 +183,28 @@ export interface ChatResult {
 // constants
 
 const DEFAULT_MAX_STEPS = 50;
+const MAX_LENGTH_CONTINUATIONS = 2;
 
 // refuse when provider-reported input tokens exceed: window - output_reserve - buffer
-const OUTPUT_RESERVE_TOKENS = 32_000; // room for assistant reply
-const CONTEXT_SAFETY_BUFFER = 20_000; // slack for next user turn + growth
+const MAX_CONTEXT_SAFETY_BUFFER = 20_000;
+
+function maxOutputTokens(): number {
+  // Never reserve most of a small local model's context for output. The
+  // configured cap still wins for normal large-context models.
+  return Math.max(
+    256,
+    Math.min(env.LLM_MAX_OUTPUT_TOKENS, Math.floor(env.CONTEXT_WINDOW_SIZE / 4))
+  );
+}
 
 function contextOverflowThreshold(): number {
-  return (
-    env.CONTEXT_WINDOW_SIZE - OUTPUT_RESERVE_TOKENS - CONTEXT_SAFETY_BUFFER
+  const safetyBuffer = Math.min(
+    MAX_CONTEXT_SAFETY_BUFFER,
+    Math.max(1024, Math.floor(env.CONTEXT_WINDOW_SIZE * 0.1))
+  );
+  return Math.max(
+    1,
+    env.CONTEXT_WINDOW_SIZE - maxOutputTokens() - safetyBuffer
   );
 }
 
@@ -188,7 +213,21 @@ function contextOverflowThreshold(): number {
 function isProviderContextOverflowError(err: unknown): boolean {
   if (!APICallError.isInstance(err)) return false;
   if (err.statusCode !== 400) return false;
-  return /prompt is too long/i.test(err.message);
+  return /prompt is too long|context(?:_| )length|maximum context|too many tokens/i.test(
+    `${err.message} ${String(err.responseBody ?? "")}`
+  );
+}
+
+function appendFinishNotice(text: string, finishReason: string): string {
+  if (finishReason === "stop") return text;
+  const notices: Record<string, string> = {
+    "content-filter":
+      "The model stopped because its safety filter interrupted the response.",
+    error: "The model stopped because generation failed.",
+    other: "The model stopped for an unspecified provider reason.",
+  };
+  const notice = notices[finishReason];
+  return notice ? `${text}${text ? "\n\n" : ""}_(${notice})_` : text;
 }
 
 // main chat loop
@@ -212,6 +251,10 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     maxSteps = DEFAULT_MAX_STEPS,
     abortSignal,
   } = ctx;
+  const turnTimeoutSignal = AbortSignal.timeout(env.LLM_TURN_TIMEOUT_MS);
+  const turnAbortSignal = abortSignal
+    ? AbortSignal.any([abortSignal, turnTimeoutSignal])
+    : turnTimeoutSignal;
 
   // shared refs: activate_skill writes tools + clients here so we can
   // inject them into the toolset and clean up processes after the turn
@@ -221,12 +264,18 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   // fresh sink each turn so tool-produced files land on this turn's reply
   const collectedAttachments: TurnAttachment[] = [];
   toolContext.attachments = collectedAttachments;
-  let tools = {
-    ...(await createToolSet(toolContext, pendingSkillTools, openSkillClients)),
-    ...createSourcesTools(collectedSources),
-  };
+  let tools =
+    ctx.toolSet ??
+    ({
+      ...(await createToolSet(
+        toolContext,
+        pendingSkillTools,
+        openSkillClients
+      )),
+      ...createSourcesTools(collectedSources),
+    } as ToolSet);
 
-  const model = llmProvider;
+  const model = ctx.model ?? llmProvider;
   let userFacts: string[] = [];
   if (ctx.userId) {
     try {
@@ -307,6 +356,123 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
   let finalFinishReason = "unknown";
   let stepCounter = 0;
   let lastInputTokens = 0;
+  let executedToolCalls = 0;
+
+  const recordResult = (result: {
+    response: { messages: unknown };
+    steps: Array<{ usage: LanguageModelUsage }>;
+  }): void => {
+    const newMessages = result.response.messages as ChatResponseMessage[];
+    allResponseMessages.push(...newMessages);
+    currentMessages = [...currentMessages, ...newMessages];
+
+    for (const step of result.steps) {
+      const stepCacheRead = step.usage.inputTokenDetails?.cacheReadTokens;
+      const stepCacheWrite = step.usage.inputTokenDetails?.cacheWriteTokens;
+      totalUsage = {
+        ...totalUsage,
+        inputTokens:
+          (totalUsage.inputTokens ?? 0) + (step.usage.inputTokens ?? 0),
+        inputTokenDetails: {
+          ...totalUsage.inputTokenDetails,
+          cacheReadTokens:
+            (totalUsage.inputTokenDetails?.cacheReadTokens ?? 0) +
+            (stepCacheRead ?? 0),
+          cacheWriteTokens:
+            (totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0) +
+            (stepCacheWrite ?? 0),
+        },
+        outputTokens:
+          (totalUsage.outputTokens ?? 0) + (step.usage.outputTokens ?? 0),
+        totalTokens:
+          (totalUsage.totalTokens ?? 0) + (step.usage.totalTokens ?? 0),
+      };
+      lastInputTokens = step.usage.inputTokens ?? lastInputTokens;
+    }
+  };
+
+  const generateTextOnly = async (messagesForCall: ModelMessage[]) =>
+    generateText({
+      model,
+      messages: [
+        ...systemMessages,
+        ...tagLastMessageForCaching(messagesForCall),
+      ],
+      maxOutputTokens: maxOutputTokens(),
+      abortSignal: turnAbortSignal,
+    }).catch((err) => {
+      if (isProviderContextOverflowError(err)) {
+        throw new ContextWindowFullError(
+          lastInputTokens,
+          env.CONTEXT_WINDOW_SIZE,
+          executedToolCalls === 0
+        );
+      }
+      throw err;
+    });
+
+  const finishTextResult = async (
+    initialResult: { text: string; finishReason: string },
+    responseStart: number
+  ): Promise<void> => {
+    finalFinishReason = initialResult.finishReason;
+    if (initialResult.text) finalText = initialResult.text;
+
+    if (initialResult.finishReason !== "length") {
+      finalText = appendFinishNotice(finalText, initialResult.finishReason);
+      return;
+    }
+
+    let reason: string = initialResult.finishReason;
+    let continuationCount = 0;
+    while (
+      reason === "length" &&
+      continuationCount < MAX_LENGTH_CONTINUATIONS
+    ) {
+      const continuationPrompt: ModelMessage = {
+        role: "user",
+        content:
+          "Continue the response from the exact point where it stopped. Do not repeat earlier text and do not add a preamble.",
+      };
+      currentMessages = [...currentMessages, continuationPrompt];
+
+      let continuation: Awaited<ReturnType<typeof generateText>>;
+      try {
+        continuation = await generateTextOnly(currentMessages);
+      } catch (err) {
+        logger.warn("chat: output continuation failed", { err });
+        finalText +=
+          "\n\n_(The response could not be continued after reaching the model's output limit.)_";
+        reason = "continuation-error";
+        finalFinishReason = "continuation-error";
+        break;
+      }
+
+      recordResult(continuation);
+      stepCounter++;
+      finalText += continuation.text;
+      reason = continuation.finishReason;
+      finalFinishReason = reason;
+      continuationCount++;
+    }
+
+    if (reason === "length") {
+      finalText +=
+        "\n\n_(The response stopped after repeatedly reaching the model's output limit.)_";
+    } else {
+      finalText = appendFinishNotice(finalText, reason);
+    }
+
+    // Continuation prompts are internal implementation details. Persist one
+    // combined assistant message instead of several assistant fragments whose
+    // hidden prompts would be missing from future history.
+    allResponseMessages.splice(responseStart);
+    allResponseMessages.push({
+      id: crypto.randomUUID(),
+      role: "assistant",
+      content: finalText,
+    });
+  };
 
   try {
     while (stepCounter < maxSteps) {
@@ -319,45 +485,23 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         ],
         tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
-        abortSignal,
+        maxOutputTokens: maxOutputTokens(),
+        abortSignal: turnAbortSignal,
       }).catch((err) => {
-        // anthropic returns a 400 "prompt is too long" when history exceeds the window
+        // Providers use different messages for context overflow. Retrying the
+        // whole turn is only safe before any tools have executed.
         if (isProviderContextOverflowError(err)) {
           throw new ContextWindowFullError(
             lastInputTokens,
-            env.CONTEXT_WINDOW_SIZE
+            env.CONTEXT_WINDOW_SIZE,
+            executedToolCalls === 0
           );
         }
         throw err;
       });
 
-      const newMessages = result.response.messages as ChatResponseMessage[];
-      allResponseMessages.push(...newMessages);
-      currentMessages = [...currentMessages, ...newMessages];
-
-      for (const step of result.steps) {
-        const stepCacheRead = step.usage.inputTokenDetails?.cacheReadTokens;
-        const stepCacheWrite = step.usage.inputTokenDetails?.cacheWriteTokens;
-        totalUsage = {
-          ...totalUsage,
-          inputTokens:
-            (totalUsage.inputTokens ?? 0) + (step.usage.inputTokens ?? 0),
-          inputTokenDetails: {
-            ...totalUsage.inputTokenDetails,
-            cacheReadTokens:
-              (totalUsage.inputTokenDetails?.cacheReadTokens ?? 0) +
-              (stepCacheRead ?? 0),
-            cacheWriteTokens:
-              (totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0) +
-              (stepCacheWrite ?? 0),
-          },
-          outputTokens:
-            (totalUsage.outputTokens ?? 0) + (step.usage.outputTokens ?? 0),
-          totalTokens:
-            (totalUsage.totalTokens ?? 0) + (step.usage.totalTokens ?? 0),
-        };
-        lastInputTokens = step.usage.inputTokens ?? lastInputTokens;
-      }
+      const responseStart = allResponseMessages.length;
+      recordResult(result);
 
       const step = result.steps[0];
       if (step) {
@@ -394,6 +538,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
           const call = step.toolCalls[i];
           const toolResult = step.toolResults?.[i];
           if (!call) continue;
+          executedToolCalls++;
 
           logger.debug("chat: tool executed", {
             step: stepCounter,
@@ -415,24 +560,14 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
       finalFinishReason = result.finishReason;
       stepCounter++;
 
-      // post-step: abort before next round-trip if this step pushed us over
-      if (lastInputTokens > threshold) {
-        throw new ContextWindowFullError(
-          lastInputTokens,
-          env.CONTEXT_WINDOW_SIZE
-        );
-      }
-
       if (result.finishReason !== "tool-calls") {
-        // final step — keep the carried answer if this step produced no text
-        // (common after cite_sources: the model already wrote its reply
-        // alongside the tool call and has nothing to add to the result)
-        if (result.text) finalText = result.text;
+        await finishTextResult(result, responseStart);
         break;
       }
 
-      // intermediate tool-call step: only carry text forward if produced,
-      // so a tool-only step (cite_sources, etc.) doesn't erase a preceding answer
+      // Intermediate text is live narration, not part of the clean final
+      // answer. Retain the latest fragment only as a fallback for tool-only
+      // terminal steps (for example cite_sources with no follow-up text).
       if (result.text) finalText = result.text;
 
       // inject any MCP tools loaded by activate_skill during this step.
@@ -450,11 +585,40 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
               { tool: key }
             );
           } else {
-            tools = { ...tools, [key]: pendingSkillTools[key] };
+            tools = {
+              ...tools,
+              [key]: pendingSkillTools[key] as ToolSet[string],
+            };
           }
           delete pendingSkillTools[key];
         }
       }
+
+      // The ordinary loop limit is a tool-call budget, not permission to omit
+      // the answer. Context pressure likewise disables further tools but still
+      // allows one final text-only response using the results already obtained.
+      if (stepCounter >= maxSteps || lastInputTokens > threshold) {
+        logger.info("chat: forcing final text response", {
+          reason: stepCounter >= maxSteps ? "step-limit" : "context-pressure",
+          steps: stepCounter,
+          lastInputTokens,
+        });
+        const forcedResponseStart = allResponseMessages.length;
+        const forced = await generateTextOnly(currentMessages);
+        recordResult(forced);
+        stepCounter++;
+        await finishTextResult(forced, forcedResponseStart);
+        break;
+      }
+    }
+
+    // A caller-provided zero step budget should still produce a response.
+    if (stepCounter === 0) {
+      const responseStart = allResponseMessages.length;
+      const forced = await generateTextOnly(currentMessages);
+      recordResult(forced);
+      stepCounter++;
+      await finishTextResult(forced, responseStart);
     }
   } finally {
     // close any skill MCP servers that were started during this turn

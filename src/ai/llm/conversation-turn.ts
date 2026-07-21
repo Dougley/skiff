@@ -19,6 +19,7 @@ import { renderLatex } from "../../utils/latex.js";
 import {
   markdownToDiscordComponents,
   type ParsedMessage,
+  splitComponentMessages,
   splitComponentMessagesWithFiles,
 } from "../../utils/markdown-parser.js";
 import {
@@ -254,7 +255,8 @@ export async function handleConversationTurn(
     const freshHistory = await getRecentMessages(
       conversation.id,
       undefined,
-      fresh.summaryUpToMessageId
+      fresh.summaryUpToMessageId,
+      userMsg.id
     );
     try {
       return await runChat(freshHistory, fresh.summary, null);
@@ -271,6 +273,19 @@ export async function handleConversationTurn(
     if (!(err instanceof ContextWindowFullError)) {
       if (debounceTimer) clearTimeout(debounceTimer);
       throw err;
+    }
+    if (!err.retrySafe) {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      const notice =
+        "I completed part of the requested work, but the conversation ran out of context before I could produce a final response. I did not retry because that could repeat tool actions. Use " +
+        `${clearMention(guildId)} before trying again.`;
+      const components = markdownToDiscordComponents(notice);
+      return {
+        messages: splitComponentMessagesWithFiles(components, []),
+        text: notice,
+        usedTools: toolEvents.some((event) => event.type === "tool"),
+        historyLength: history.length + 1,
+      };
     }
     logger.info("context window full — compacting and retrying", {
       channelId,
@@ -389,26 +404,34 @@ export async function handleConversationTurn(
     if (contextWarning) {
       footerParts.push(contextWarning);
     }
+    const footerText = footerParts.join("\n");
     const footerComponents = [
       new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small),
-      new TextDisplayBuilder().setContent(footerParts.join("\n")),
+      ...markdownToDiscordComponents(footerText),
     ];
+    const footerChunks = splitComponentMessages(footerComponents);
 
     const last = messages[messages.length - 1];
+    const onlyFooterChunk = footerChunks.length === 1 ? footerChunks[0] : null;
     if (
       last &&
-      last.components.length + footerComponents.length <= 40 &&
+      onlyFooterChunk &&
+      last.components.length + onlyFooterChunk.length <= 40 &&
       last.components
         .filter((c) => c instanceof TextDisplayBuilder)
         .reduce((sum, c) => sum + c.toJSON().content.length, 0) +
-        footerParts.join("\n").length <=
+        onlyFooterChunk
+          .filter((c) => c instanceof TextDisplayBuilder)
+          .reduce((sum, c) => sum + c.toJSON().content.length, 0) <=
         4000
     ) {
       // fits in the last chunk
-      last.components.push(...footerComponents);
+      last.components.push(...onlyFooterChunk);
     } else {
-      // doesn't fit — start a new trailing chunk
-      messages.push({ components: footerComponents, files: [] });
+      // doesn't fit — append as many valid trailing chunks as needed
+      messages.push(
+        ...footerChunks.map((components) => ({ components, files: [] }))
+      );
     }
   }
 
@@ -418,18 +441,28 @@ export async function handleConversationTurn(
       (a) => new AttachmentBuilder(a.data, { name: a.name })
     );
     const last = messages[messages.length - 1];
-    if (last && last.files.length + builders.length <= 10) {
-      last.files.push(...builders);
-    } else {
-      // no text chunk or too many files — send them as their own chunk
+    let nextAttachment = 0;
+
+    // Use any capacity left on the final text message first.
+    if (last && last.files.length < 10) {
+      const available = 10 - last.files.length;
+      last.files.push(...builders.slice(0, available));
+      nextAttachment = available;
+    }
+
+    // Discord accepts at most ten files per message. Emit every remaining
+    // attachment across additional chunks instead of silently dropping files.
+    while (nextAttachment < builders.length) {
+      const files = builders.slice(nextAttachment, nextAttachment + 10);
       messages.push({
         components: [
           new TextDisplayBuilder().setContent(
-            `-# 📎 ${builders.length} attachment${builders.length === 1 ? "" : "s"}`
+            `-# 📎 ${files.length} attachment${files.length === 1 ? "" : "s"}`
           ),
         ],
-        files: builders.slice(0, 10),
+        files,
       });
+      nextAttachment += files.length;
     }
   }
 

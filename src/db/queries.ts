@@ -1,5 +1,5 @@
 import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
-import { and, desc, eq, gt, isNotNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, lt, or } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { conversations, db, heartbeatChannels, messages } from "./index.js";
 import type { Conversation, DBMessage } from "./schema.js";
@@ -72,7 +72,8 @@ export async function insertMessage(input: MessageInsert): Promise<DBMessage> {
 export async function getRecentMessages(
   conversationId: string,
   limit?: number,
-  afterMessageId?: number | null
+  afterMessageId?: number | null,
+  beforeMessageId?: number | null
 ): Promise<
   Pick<DBMessage, "role" | "content" | "toolCalls" | "toolResults">[]
 > {
@@ -88,6 +89,7 @@ export async function getRecentMessages(
       and(
         eq(messages.conversationId, conversationId),
         afterMessageId ? gt(messages.id, afterMessageId) : undefined,
+        beforeMessageId ? lt(messages.id, beforeMessageId) : undefined,
         or(
           isNotNull(messages.content),
           isNotNull(messages.toolCalls),
