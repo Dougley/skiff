@@ -16,6 +16,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 
 - **Multi-turn conversations** via `/ask`, `/clear`, and @mentions
 - **Long-term memory**, semantic search, automatic fact extraction, and topic knowledge
+- **Living Logbook**, durable storylines with decisions, commitments, risks, and open questions
 - **Multiple LLM backends**, OpenAI, Anthropic, Ollama, or any OpenAI-compatible API
 - **Embedded database**, PGlite with pgvector, no external PostgreSQL needed
 - **Discord tools**, look up server info, users, react to messages, and more
@@ -143,7 +144,7 @@ TOOL_DM_RULES=shell,web
 TOOL_USER_RULES=222222222222222222:scheduler
 ```
 
-Available tool groups: `discord`, `persona`, `memory`, `topic`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
+Available tool groups: `discord`, `persona`, `memory`, `topic`, `logbook`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
 
 The `web` group controls `web_search`, `fetch_url`, and `browser_cdp` together.
 
@@ -213,6 +214,10 @@ The sleep cycle is a background maintenance system that runs during idle periods
 | `SLEEP_PROPOSE_MAX_USER_MESSAGES` | `200` | Max user messages to consider for skill proposals |
 | `SLEEP_PROPOSE_MIN_CONFIDENCE` | `75` | Minimum confidence (0-100) for a skill proposal to be kept |
 | `SLEEP_MAX_ADDENDA_PER_SCOPE` | `15` | Max persona addenda injected into a single system prompt |
+
+### Logbook
+
+The Logbook tracks endeavors that unfold across conversations. A storyline has a goal, a concise current state, owners, lifecycle status, and an append-only history of decisions, commitments, open questions, risks, milestones, and notes. Ask Skiff to track something, then use `/logbook list` or `/logbook show` to inspect it. Relevant active storylines are recalled automatically during later conversations.
 
 ### General
 

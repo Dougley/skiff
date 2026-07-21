@@ -27,6 +27,8 @@ export interface DiscordToolContext {
   guildId: string | null;
   channelId: string;
   userId?: string | null;
+  /** Internal persisted message id used to link durable records to provenance. */
+  sourceMessageId?: number | null;
   /**
    * Sink for files tools want attached to the reply (e.g. screenshots).
    * Set by the chat loop at the start of each turn.

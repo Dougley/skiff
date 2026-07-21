@@ -8,6 +8,7 @@ export type ToolGroup =
   | "web"
   | "scheduler"
   | "heartbeat"
+  | "logbook"
   | "shell"
   | "mcp"
   | "user-input"
@@ -53,6 +54,7 @@ const VALID_TOOL_GROUPS = new Set<ToolGroup>([
   "web",
   "scheduler",
   "heartbeat",
+  "logbook",
   "shell",
   "mcp",
   "user-input",

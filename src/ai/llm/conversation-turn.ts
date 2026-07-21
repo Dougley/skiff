@@ -26,6 +26,10 @@ import {
   formatContextUsage,
   formatToolStatusMessage,
 } from "../../utils/tool-status.js";
+import {
+  findRelevantStorylines,
+  formatStorylinesForPrompt,
+} from "../logbook/store.js";
 import { compactConversation, shouldCompact } from "../memory/compaction.js";
 import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
@@ -166,6 +170,20 @@ export async function handleConversationTurn(
     content,
     userId,
   });
+  toolContext.sourceMessageId = userMsg.id;
+
+  let logbookContext: string[] = [];
+  if (!skipMemory) {
+    try {
+      const relevant = await findRelevantStorylines(
+        { guildId, channelId },
+        content
+      );
+      logbookContext = formatStorylinesForPrompt(relevant);
+    } catch (err) {
+      logger.warn("fetch relevant Logbook storylines failed", { err });
+    }
+  }
 
   if (!skipMemory) {
     void enqueueEmbedding({
@@ -245,6 +263,7 @@ export async function handleConversationTurn(
       onToolActivity,
       priorInputTokens: priorTokens,
       conversationSummary: summary,
+      logbookContext,
     });
 
   // when the context wall is hit, compact the history into the rolling

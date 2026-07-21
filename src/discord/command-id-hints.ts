@@ -41,6 +41,7 @@ export enum CommandHintKey {
   Clear = "clear",
   Memory = "memory",
   Topic = "topic",
+  Logbook = "logbook",
   SleepCycle = "sleep-cycle",
 }
 

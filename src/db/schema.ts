@@ -154,6 +154,70 @@ export const topicKnowledge = pgTable(
   ]
 );
 
+// logbook storylines — durable, evolving records of work in progress.
+// Unlike topic knowledge (a summary of what was discussed), a storyline
+// captures what a scope is trying to accomplish and where it currently stands.
+export const storylines = pgTable(
+  "storylines",
+  {
+    id: serial("id").primaryKey(),
+    title: text("title").notNull(),
+    goal: text("goal").notNull(),
+    currentState: text("current_state").notNull(),
+    status: text("status").default("open").notNull(), // open|paused|completed|abandoned
+    guildId: text("guild_id"),
+    channelId: text("channel_id"),
+    createdByUserId: text("created_by_user_id"),
+    ownerUserIds: text("owner_user_ids").array().notNull().default([]),
+    tags: text("tags").array().notNull().default([]),
+    sourceMessageId: integer("source_message_id").references(
+      () => messages.id,
+      { onDelete: "set null" }
+    ),
+    embedding: vector("embedding", { dimensions: EMBEDDING_DIMENSIONS }),
+    lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_storylines_guild").on(t.guildId),
+    index("idx_storylines_channel").on(t.channelId),
+    index("idx_storylines_status").on(t.status),
+    index("idx_storylines_activity").on(t.lastActivityAt),
+  ]
+);
+
+// logbook events — append-only evidence of how a storyline changed.
+// Open questions, commitments, and risks remain active until explicitly
+// resolved; decisions and notes form the permanent decision trail.
+export const storylineEvents = pgTable(
+  "storyline_events",
+  {
+    id: serial("id").primaryKey(),
+    storylineId: integer("storyline_id")
+      .notNull()
+      .references(() => storylines.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(), // note|decision|open_question|commitment|risk|milestone
+    summary: text("summary").notNull(),
+    details: text("details"),
+    status: text("status").default("active").notNull(), // active|resolved|dismissed
+    actorUserId: text("actor_user_id"),
+    ownerUserId: text("owner_user_id"),
+    dueAt: timestamp("due_at"),
+    sourceMessageId: integer("source_message_id").references(
+      () => messages.id,
+      { onDelete: "set null" }
+    ),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    index("idx_storyline_events_storyline").on(t.storylineId),
+    index("idx_storyline_events_status").on(t.status),
+    index("idx_storyline_events_due").on(t.dueAt),
+  ]
+);
+
 // scheduled tasks — one-shot reminders and recurring cron jobs
 export const scheduledTasks = pgTable(
   "scheduled_tasks",
@@ -306,6 +370,10 @@ export type NewMessage = typeof messages.$inferInsert;
 export type UserFact = typeof userFacts.$inferSelect;
 export type NewUserFact = typeof userFacts.$inferInsert;
 export type TopicKnowledge = typeof topicKnowledge.$inferSelect;
+export type Storyline = typeof storylines.$inferSelect;
+export type NewStoryline = typeof storylines.$inferInsert;
+export type StorylineEvent = typeof storylineEvents.$inferSelect;
+export type NewStorylineEvent = typeof storylineEvents.$inferInsert;
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
 export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
 export type SleepCycleSettings = typeof sleepCycleSettings.$inferSelect;

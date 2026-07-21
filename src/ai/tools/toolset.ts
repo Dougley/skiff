@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { createDiscordTools, type DiscordToolContext } from "./discord.js";
 import { createHeartbeatTools } from "./heartbeat.js";
+import { createLogbookTools } from "./logbook.js";
 import { createToolset as createMCPToolset } from "./mcp.js";
 import { createMemoryTools } from "./memory.js";
 import { createPersonaTools } from "./persona.js";
@@ -42,6 +43,7 @@ export async function createToolSet(
     ...(!disabled.has("web") ? createWebTools(ctx) : {}),
     ...(!disabled.has("scheduler") ? createSchedulerTools(ctx) : {}),
     ...(!disabled.has("heartbeat") ? createHeartbeatTools(ctx) : {}),
+    ...(!disabled.has("logbook") ? createLogbookTools(ctx) : {}),
     ...(env.SHELL_ENABLED && !disabled.has("shell") ? createShellTools() : {}),
     ...(!disabled.has("user-input") ? createUserInputTools(ctx) : {}),
     ...(!disabled.has("skills")

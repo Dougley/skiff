@@ -137,6 +137,8 @@ export interface ChatContext {
   priorInputTokens?: number | null;
   /** Rolling summary of compacted conversation history, injected into the prompt. */
   conversationSummary?: string | null;
+  /** Pre-retrieved Logbook storylines relevant to this turn. */
+  logbookContext?: string[];
   /**
    * Called after each tool execution so the caller can update a
    * "working on it…" message in Discord with live status.
@@ -301,6 +303,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     guildId: toolContext.guildId,
     channelId: toolContext.channelId,
     conversationSummary: ctx.conversationSummary,
+    logbookContext: ctx.logbookContext,
   });
 
   // two system messages let us put an anthropic cache breakpoint between
