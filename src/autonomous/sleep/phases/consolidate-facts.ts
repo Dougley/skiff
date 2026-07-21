@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
@@ -103,13 +103,13 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
 
     let result: z.infer<typeof resolutionSchema>;
     try {
-      const r = await generateObject({
+      const r = await generateText({
         model: getLLMProvider(undefined, modelId),
-        schema: resolutionSchema,
+        output: Output.object({ schema: resolutionSchema }),
         prompt,
         maxRetries: 1,
       });
-      result = r.object;
+      result = r.output;
       ctx.tokenUsage +=
         (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
     } catch (err) {

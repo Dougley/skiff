@@ -7,6 +7,7 @@ This file defines standing instructions for proactive monitoring. The bot checks
 - Check for any pending tasks or reminders in memory
 - Look for urgent mentions or unread important messages
 - Review any outstanding issues or blockers
+- Trace relevant Wake links when a decision appears to conflict with its recorded reasoning
 
 ## Guidelines
 

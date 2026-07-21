@@ -1,10 +1,15 @@
 import { type Embedding, embed } from "ai";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
 import {
+  conversations,
   db,
+  messages,
   type Storyline,
   type StorylineEvent,
+  type StorylineEventLink,
+  storylineEventLinks,
+  storylineEventSources,
   storylineEvents,
   storylines,
 } from "../../db/index.js";
@@ -32,6 +37,15 @@ export const STORYLINE_EVENT_KINDS = [
 ] as const;
 export type StorylineEventKind = (typeof STORYLINE_EVENT_KINDS)[number];
 
+export const WAKE_RELATIONS = [
+  "supports",
+  "depends_on",
+  "contradicts",
+  "supersedes",
+  "caused_by",
+] as const;
+export type WakeRelation = (typeof WAKE_RELATIONS)[number];
+
 export type LogbookScope = {
   guildId: string | null;
   channelId: string;
@@ -43,6 +57,15 @@ export function storylineScopeFilter(scope: LogbookScope) {
     : and(
         sql`${storylines.guildId} is null`,
         eq(storylines.channelId, scope.channelId)
+      );
+}
+
+function conversationScopeFilter(scope: LogbookScope) {
+  return scope.guildId
+    ? eq(conversations.guildId, scope.guildId)
+    : and(
+        sql`${conversations.guildId} is null`,
+        eq(conversations.channelId, scope.channelId)
       );
 }
 
@@ -266,6 +289,216 @@ export async function resolveStorylineEvent(
       .where(eq(storylines.id, params.storylineId));
     return { resolved, resolution };
   });
+}
+
+async function getScopedEvent(scope: LogbookScope, eventId: number) {
+  const [row] = await db
+    .select({ event: storylineEvents, storyline: storylines })
+    .from(storylineEvents)
+    .innerJoin(storylines, eq(storylineEvents.storylineId, storylines.id))
+    .where(and(eq(storylineEvents.id, eventId), storylineScopeFilter(scope)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** Connect two pieces of Logbook history without crossing privacy scopes. */
+export async function linkStorylineEvents(
+  params: LogbookScope & {
+    fromEventId: number;
+    toEventId: number;
+    relation: WakeRelation;
+    rationale?: string | null;
+    createdByUserId?: string | null;
+    sourceMessageId?: number | null;
+  }
+): Promise<StorylineEventLink | null> {
+  if (params.fromEventId === params.toEventId) return null;
+  const [from, to] = await Promise.all([
+    getScopedEvent(params, params.fromEventId),
+    getScopedEvent(params, params.toEventId),
+  ]);
+  if (!from || !to) return null;
+
+  const [link] = await db
+    .insert(storylineEventLinks)
+    .values({
+      fromEventId: params.fromEventId,
+      toEventId: params.toEventId,
+      relation: params.relation,
+      rationale: params.rationale?.trim() || null,
+      createdByUserId: params.createdByUserId ?? null,
+      sourceMessageId: params.sourceMessageId ?? null,
+    })
+    .onConflictDoUpdate({
+      target: [
+        storylineEventLinks.fromEventId,
+        storylineEventLinks.toEventId,
+        storylineEventLinks.relation,
+      ],
+      set: {
+        rationale: params.rationale?.trim() || null,
+        sourceMessageId: params.sourceMessageId ?? null,
+      },
+    })
+    .returning();
+  return link ?? null;
+}
+
+/** Attach the current conversation message as corroborating evidence. */
+export async function addStorylineEventSource(
+  params: LogbookScope & {
+    eventId: number;
+    messageId: number;
+    note?: string | null;
+  }
+): Promise<boolean> {
+  if (!(await getScopedEvent(params, params.eventId))) return false;
+  const [message] = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+    .where(
+      and(eq(messages.id, params.messageId), conversationScopeFilter(params))
+    )
+    .limit(1);
+  if (!message) return false;
+
+  await db
+    .insert(storylineEventSources)
+    .values({
+      eventId: params.eventId,
+      messageId: params.messageId,
+      note: params.note?.trim() || null,
+    })
+    .onConflictDoUpdate({
+      target: [storylineEventSources.eventId, storylineEventSources.messageId],
+      set: { note: params.note?.trim() || null },
+    });
+  return true;
+}
+
+export type WakeNode = {
+  event: StorylineEvent;
+  storyline: Pick<Storyline, "id" | "title">;
+  evidence: Array<{ messageId: number; excerpt: string; note: string | null }>;
+};
+
+export type WakeGraph = {
+  rootEventId: number;
+  nodes: WakeNode[];
+  links: StorylineEventLink[];
+};
+
+/** Walk the evidence and causal neighborhood around one Logbook event. */
+export async function getWake(
+  scope: LogbookScope,
+  rootEventId: number,
+  depth = 3
+): Promise<WakeGraph | null> {
+  const root = await getScopedEvent(scope, rootEventId);
+  if (!root) return null;
+
+  const boundedDepth = Math.max(1, Math.min(depth, 4));
+  const nodes = new Map<number, typeof root>([[rootEventId, root]]);
+  const links = new Map<number, StorylineEventLink>();
+  let frontier = [rootEventId];
+
+  for (let level = 0; level < boundedDepth && frontier.length > 0; level++) {
+    const rows = await db
+      .select()
+      .from(storylineEventLinks)
+      .where(
+        or(
+          inArray(storylineEventLinks.fromEventId, frontier),
+          inArray(storylineEventLinks.toEventId, frontier)
+        )
+      );
+    const next: number[] = [];
+    for (const link of rows) {
+      if (links.has(link.id)) continue;
+      const neighborIds = [link.fromEventId, link.toEventId].filter(
+        (id) => !nodes.has(id)
+      );
+      let valid = true;
+      for (const id of neighborIds) {
+        if (nodes.size >= 50) {
+          valid = false;
+          break;
+        }
+        const neighbor = await getScopedEvent(scope, id);
+        if (!neighbor) {
+          valid = false;
+          break;
+        }
+        nodes.set(id, neighbor);
+        next.push(id);
+      }
+      if (valid) links.set(link.id, link);
+    }
+    frontier = [...new Set(next)];
+  }
+
+  const eventIds = [...nodes.keys()];
+  const extraSources = await db
+    .select()
+    .from(storylineEventSources)
+    .where(inArray(storylineEventSources.eventId, eventIds));
+  const sourceIds = new Set<number>();
+  for (const row of nodes.values()) {
+    if (row.event.sourceMessageId) sourceIds.add(row.event.sourceMessageId);
+  }
+  for (const source of extraSources) sourceIds.add(source.messageId);
+  const sourceMessages = sourceIds.size
+    ? await db
+        .select({ id: messages.id, content: messages.content })
+        .from(messages)
+        .innerJoin(conversations, eq(messages.conversationId, conversations.id))
+        .where(
+          and(
+            inArray(messages.id, [...sourceIds]),
+            conversationScopeFilter(scope)
+          )
+        )
+    : [];
+  const excerpts = new Map(
+    sourceMessages.map((message) => [
+      message.id,
+      (message.content ?? "").slice(0, 500),
+    ])
+  );
+
+  return {
+    rootEventId,
+    nodes: [...nodes.values()].map(({ event, storyline }) => {
+      const evidence = new Map<
+        number,
+        { messageId: number; excerpt: string; note: string | null }
+      >();
+      if (event.sourceMessageId && excerpts.has(event.sourceMessageId)) {
+        evidence.set(event.sourceMessageId, {
+          messageId: event.sourceMessageId,
+          excerpt: excerpts.get(event.sourceMessageId) ?? "",
+          note: "Primary source",
+        });
+      }
+      for (const source of extraSources) {
+        if (source.eventId !== event.id || !excerpts.has(source.messageId)) {
+          continue;
+        }
+        evidence.set(source.messageId, {
+          messageId: source.messageId,
+          excerpt: excerpts.get(source.messageId) ?? "",
+          note: source.note,
+        });
+      }
+      return {
+        event,
+        storyline: { id: storyline.id, title: storyline.title },
+        evidence: [...evidence.values()],
+      };
+    }),
+    links: [...links.values()],
+  };
 }
 
 const QUERY_STOP_WORDS = new Set([

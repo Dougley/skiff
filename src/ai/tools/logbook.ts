@@ -1,18 +1,23 @@
 import { tool } from "@ai-sdk/provider-utils";
 import { z } from "zod";
 import {
+  addStorylineEventSource,
   createStoryline,
   getStoryline,
+  getWake,
+  linkStorylineEvents,
   listStorylines,
   recordStorylineEvent,
   resolveStorylineEvent,
   STORYLINE_EVENT_KINDS,
   STORYLINE_STATUSES,
+  WAKE_RELATIONS,
 } from "../logbook/store.js";
 import type { DiscordToolContext } from "./discord.js";
 
 const storylineStatusSchema = z.enum(STORYLINE_STATUSES);
 const eventKindSchema = z.enum(STORYLINE_EVENT_KINDS);
+const wakeRelationSchema = z.enum(WAKE_RELATIONS);
 
 export const createLogbookTools = (ctx: DiscordToolContext) => {
   const scope = { guildId: ctx.guildId, channelId: ctx.channelId };
@@ -160,6 +165,85 @@ export const createLogbookTools = (ctx: DiscordToolContext) => {
           };
         }
         return { success: true, resolvedEventId: result.resolved.id };
+      },
+    }),
+
+    wake_why: tool({
+      description:
+        "Trace why a Logbook event exists: its causal, supporting, contradicting, and superseding links plus source-message evidence. This is read-only and may be used freely.",
+      inputSchema: z.object({
+        eventId: z.number().int().positive(),
+        depth: z.number().int().min(1).max(4).default(3),
+      }),
+      execute: async ({ eventId, depth }) => {
+        const graph = await getWake(scope, eventId, depth);
+        if (!graph) return { error: "Event not found in this scope." };
+        return {
+          rootEventId: graph.rootEventId,
+          events: graph.nodes.map(({ event, storyline, evidence }) => ({
+            id: event.id,
+            storyline,
+            kind: event.kind,
+            summary: event.summary,
+            details: event.details,
+            createdAt: event.createdAt.toISOString(),
+            evidence,
+          })),
+          links: graph.links.map((link) => ({
+            fromEventId: link.fromEventId,
+            relation: link.relation,
+            toEventId: link.toEventId,
+            rationale: link.rationale,
+          })),
+        };
+      },
+    }),
+
+    wake_link: tool({
+      description:
+        "Create a typed connection between two Logbook events when the user explicitly states or confirms the relationship. Read it as: FROM supports/depends on/contradicts/supersedes/was caused by TO.",
+      inputSchema: z.object({
+        fromEventId: z.number().int().positive(),
+        relation: wakeRelationSchema,
+        toEventId: z.number().int().positive(),
+        rationale: z.string().max(1000).nullable().default(null),
+      }),
+      execute: async (input) => {
+        const link = await linkStorylineEvents({
+          ...scope,
+          ...input,
+          createdByUserId: ctx.userId ?? null,
+          sourceMessageId: ctx.sourceMessageId ?? null,
+        });
+        if (!link) {
+          return {
+            error:
+              "Both events must be distinct and belong to this server or DM.",
+          };
+        }
+        return { success: true, linkId: link.id };
+      },
+    }),
+
+    wake_add_evidence: tool({
+      description:
+        "Attach the user's current message as additional evidence for an existing Logbook event. Use only when this message clearly corroborates, clarifies, or validates that event.",
+      inputSchema: z.object({
+        eventId: z.number().int().positive(),
+        note: z.string().max(500).nullable().default(null),
+      }),
+      execute: async ({ eventId, note }) => {
+        if (!ctx.sourceMessageId)
+          return { error: "No source message available." };
+        const success = await addStorylineEventSource({
+          ...scope,
+          eventId,
+          messageId: ctx.sourceMessageId,
+          note,
+        });
+        return success
+          ? { success: true, eventId }
+          : { error: "Event not found in this scope." };
       },
     }),
   };

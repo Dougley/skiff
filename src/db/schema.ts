@@ -218,6 +218,60 @@ export const storylineEvents = pgTable(
   ]
 );
 
+// The Wake — typed causal links between Logbook events. Links may connect
+// events in different storylines, which lets a decision in one endeavor
+// explain a later commitment or outcome elsewhere.
+export const storylineEventLinks = pgTable(
+  "storyline_event_links",
+  {
+    id: serial("id").primaryKey(),
+    fromEventId: integer("from_event_id")
+      .notNull()
+      .references(() => storylineEvents.id, { onDelete: "cascade" }),
+    toEventId: integer("to_event_id")
+      .notNull()
+      .references(() => storylineEvents.id, { onDelete: "cascade" }),
+    relation: text("relation").notNull(), // supports|depends_on|contradicts|supersedes|caused_by
+    rationale: text("rationale"),
+    createdByUserId: text("created_by_user_id"),
+    sourceMessageId: integer("source_message_id").references(
+      () => messages.id,
+      { onDelete: "set null" }
+    ),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    unique("idx_storyline_event_links_unique").on(
+      t.fromEventId,
+      t.toEventId,
+      t.relation
+    ),
+    index("idx_storyline_event_links_from").on(t.fromEventId),
+    index("idx_storyline_event_links_to").on(t.toEventId),
+  ]
+);
+
+// Additional evidence for an event. storyline_events.source_message_id remains
+// the primary source; this table allows later messages to corroborate it.
+export const storylineEventSources = pgTable(
+  "storyline_event_sources",
+  {
+    id: serial("id").primaryKey(),
+    eventId: integer("event_id")
+      .notNull()
+      .references(() => storylineEvents.id, { onDelete: "cascade" }),
+    messageId: integer("message_id")
+      .notNull()
+      .references(() => messages.id, { onDelete: "cascade" }),
+    note: text("note"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (t) => [
+    unique("idx_storyline_event_sources_unique").on(t.eventId, t.messageId),
+    index("idx_storyline_event_sources_event").on(t.eventId),
+  ]
+);
+
 // scheduled tasks — one-shot reminders and recurring cron jobs
 export const scheduledTasks = pgTable(
   "scheduled_tasks",
@@ -321,7 +375,7 @@ export const sleepCycleChanges = pgTable(
     runId: integer("run_id")
       .notNull()
       .references(() => sleepCycleRuns.id, { onDelete: "cascade" }),
-    kind: text("kind").notNull(), // persona_addendum|topic_merge|fact_resolve|skill_author
+    kind: text("kind").notNull(), // persona_addendum|topic_merge|fact_resolve|wake_link|skill_author
     targetTable: text("target_table"),
     targetId: text("target_id"),
     before: jsonb("before").$type<Record<string, unknown> | null>(),
@@ -374,6 +428,8 @@ export type Storyline = typeof storylines.$inferSelect;
 export type NewStoryline = typeof storylines.$inferInsert;
 export type StorylineEvent = typeof storylineEvents.$inferSelect;
 export type NewStorylineEvent = typeof storylineEvents.$inferInsert;
+export type StorylineEventLink = typeof storylineEventLinks.$inferSelect;
+export type StorylineEventSource = typeof storylineEventSources.$inferSelect;
 export type ScheduledTask = typeof scheduledTasks.$inferSelect;
 export type NewScheduledTask = typeof scheduledTasks.$inferInsert;
 export type SleepCycleSettings = typeof sleepCycleSettings.$inferSelect;

@@ -7,6 +7,7 @@ import { dedupeTopics } from "./phases/dedupe-topics.js";
 import { proposeSkills } from "./phases/propose-skills.js";
 import { reflectPersona } from "./phases/reflect-persona.js";
 import { synthesizeTopics } from "./phases/synthesize-topics.js";
+import { traceWake } from "./phases/trace-wake.js";
 
 export type RunOptions = {
   guildId: string | null;
@@ -93,6 +94,7 @@ export async function executeDreamPass(
     await consolidateFacts(ctx);
     await dedupeTopics(ctx);
     await synthesizeTopics(ctx);
+    await traceWake(ctx);
     await reflectPersona(ctx);
     if (autoAuthorSkills) {
       await proposeSkills(ctx);

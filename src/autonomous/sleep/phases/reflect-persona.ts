@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
@@ -109,9 +109,9 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
 
   let reflection: z.infer<typeof reflectionSchema>;
   try {
-    const r = await generateObject({
+    const r = await generateText({
       model: getLLMProvider(undefined, modelId),
-      schema: reflectionSchema,
+      output: Output.object({ schema: reflectionSchema }),
       prompt: [
         "You are the agent reflecting on recent conversations to grow durable self-knowledge.",
         "Propose at most 3 short notes about traits, habits, or patterns worth carrying forward. Avoid user-specific facts (those go elsewhere).",
@@ -125,7 +125,7 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
       ].join("\n"),
       maxRetries: 1,
     });
-    reflection = r.object;
+    reflection = r.output;
     ctx.tokenUsage +=
       (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
   } catch (err) {

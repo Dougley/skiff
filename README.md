@@ -17,6 +17,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 - **Multi-turn conversations** via `/ask`, `/clear`, and @mentions
 - **Long-term memory**, semantic search, automatic fact extraction, and topic knowledge
 - **Living Logbook**, durable storylines with decisions, commitments, risks, and open questions
+- **The Wake**, evidence-backed causal trails explaining how decisions and outcomes came to be
 - **Multiple LLM backends**, OpenAI, Anthropic, Ollama, or any OpenAI-compatible API
 - **Embedded database**, PGlite with pgvector, no external PostgreSQL needed
 - **Discord tools**, look up server info, users, react to messages, and more
@@ -218,6 +219,8 @@ The sleep cycle is a background maintenance system that runs during idle periods
 ### Logbook
 
 The Logbook tracks endeavors that unfold across conversations. A storyline has a goal, a concise current state, owners, lifecycle status, and an append-only history of decisions, commitments, open questions, risks, milestones, and notes. Ask Skiff to track something, then use `/logbook list` or `/logbook show` to inspect it. Relevant active storylines are recalled automatically during later conversations.
+
+The Wake connects those events with typed relationships such as `supports`, `depends_on`, `contradicts`, `supersedes`, and `caused_by`. Ask Skiff why a decision was made, or use `/wake`, to trace the reasoning back to its source messages. Skiff can add supporting evidence over time without rewriting history, and its dream pass can propose high-confidence links already explicit in the Logbook.
 
 ### General
 

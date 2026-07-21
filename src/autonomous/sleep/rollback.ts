@@ -8,6 +8,7 @@ import {
   db,
   personaAddenda,
   sleepCycleChanges,
+  storylineEventLinks,
   topicKnowledge,
   userFacts,
 } from "../../db/index.js";
@@ -167,6 +168,14 @@ async function revertChange(
         )
         .returning({ id: personaAddenda.id });
       return updated.length > 0;
+    }
+    case "wake_link": {
+      if (!targetId) return false;
+      const deleted = await db
+        .delete(storylineEventLinks)
+        .where(eq(storylineEventLinks.id, Number(targetId)))
+        .returning({ id: storylineEventLinks.id });
+      return deleted.length > 0;
     }
     case "skill_author": {
       if (!targetId) return false;

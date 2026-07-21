@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { z } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
@@ -86,21 +86,21 @@ export async function extractMemory(
   });
 
   try {
-    const result = await generateObject({
+    const result = await generateText({
       model,
-      schema: memoryExtractionSchema,
+      output: Output.object({ schema: memoryExtractionSchema }),
       prompt: buildPrompt(nonEmpty),
       maxRetries: 1,
     });
     const normalized: MemoryExtraction = {
-      userFacts: result.object.userFacts.map((fact) => ({
+      userFacts: result.output.userFacts.map((fact) => ({
         ...fact,
         confidence:
           typeof fact.confidence === "number"
             ? Math.min(100, Math.max(0, fact.confidence))
             : undefined,
       })),
-      topicSummary: result.object.topicSummary,
+      topicSummary: result.output.topicSummary,
     };
     logger.debug("memory extraction completed", {
       userFacts: normalized.userFacts.length,

@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
@@ -79,9 +79,9 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
 
       let merged: z.infer<typeof mergeSchema>;
       try {
-        const r = await generateObject({
+        const r = await generateText({
           model: getLLMProvider(undefined, modelId),
-          schema: mergeSchema,
+          output: Output.object({ schema: mergeSchema }),
           prompt: [
             "Two topic knowledge entries appear to cover the same subject. Pick the stronger title as canonical and write a single combined summary that preserves unique detail from both.",
             "",
@@ -95,7 +95,7 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
           ].join("\n"),
           maxRetries: 1,
         });
-        merged = r.object;
+        merged = r.output;
         ctx.tokenUsage +=
           (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
       } catch (err) {

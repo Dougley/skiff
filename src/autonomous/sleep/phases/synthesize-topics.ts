@@ -1,4 +1,4 @@
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
@@ -142,9 +142,9 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
 
     let synth: z.infer<typeof synthSchema>;
     try {
-      const r = await generateObject({
+      const r = await generateText({
         model: getLLMProvider(undefined, modelId),
-        schema: synthSchema,
+        output: Output.object({ schema: synthSchema }),
         prompt: [
           "Summarize the common topic connecting these message excerpts. Return a concise title, a 2-3 sentence summary, and a few tags.",
           "If the messages don't actually share a topic, return a title of 'NO_TOPIC' — the caller will discard it.",
@@ -153,7 +153,7 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
         ].join("\n"),
         maxRetries: 1,
       });
-      synth = r.object;
+      synth = r.output;
       ctx.tokenUsage +=
         (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
     } catch (err) {

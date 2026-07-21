@@ -125,3 +125,108 @@ test("retrieves a lexically relevant active storyline without embeddings", async
   assert.equal(matches[0]?.id, release.id);
   assert.ok(matches.every((row) => row.title !== "Community meetup"));
 });
+
+test("builds an evidence-backed Wake without crossing scopes", async () => {
+  const scope = { guildId: "guild-wake", channelId: "channel" };
+  const storyline = await logbook.createStoryline({
+    ...scope,
+    title: "Choose the database",
+    goal: "Pick durable local storage",
+    currentState: "PGlite is selected",
+  });
+  const constraint = await logbook.recordStorylineEvent({
+    ...scope,
+    storylineId: storyline.id,
+    kind: "decision",
+    summary: "Keep deployment self-contained",
+  });
+  const decision = await logbook.recordStorylineEvent({
+    ...scope,
+    storylineId: storyline.id,
+    kind: "decision",
+    summary: "Use PGlite for embedded persistence",
+  });
+  assert.ok(constraint && decision);
+
+  const link = await logbook.linkStorylineEvents({
+    ...scope,
+    fromEventId: decision.event.id,
+    relation: "caused_by",
+    toEventId: constraint.event.id,
+    rationale: "Embedded storage preserves the single-container deployment.",
+  });
+  assert.ok(link);
+
+  const { db, conversations, messages } = await import("../src/db/index.js");
+  const [conversation] = await db
+    .insert(conversations)
+    .values({
+      channelId: "wake-evidence",
+      guildId: "guild-wake",
+      model: "test",
+    })
+    .returning();
+  assert.ok(conversation);
+  const [message] = await db
+    .insert(messages)
+    .values({
+      conversationId: conversation.id,
+      role: "user",
+      content: "We need the service to remain self-contained.",
+      userId: "user-wake",
+    })
+    .returning();
+  assert.ok(message);
+  assert.equal(
+    await logbook.addStorylineEventSource({
+      ...scope,
+      eventId: constraint.event.id,
+      messageId: message.id,
+      note: "Constraint confirmed",
+    }),
+    true
+  );
+  const [foreignConversation] = await db
+    .insert(conversations)
+    .values({ channelId: "foreign", guildId: "other-guild", model: "test" })
+    .returning();
+  assert.ok(foreignConversation);
+  const [foreignMessage] = await db
+    .insert(messages)
+    .values({
+      conversationId: foreignConversation.id,
+      role: "user",
+      content: "Private evidence from another scope",
+    })
+    .returning();
+  assert.ok(foreignMessage);
+  assert.equal(
+    await logbook.addStorylineEventSource({
+      ...scope,
+      eventId: constraint.event.id,
+      messageId: foreignMessage.id,
+    }),
+    false
+  );
+
+  const wake = await logbook.getWake(scope, decision.event.id, 3);
+  assert.ok(wake);
+  assert.deepEqual(
+    new Set(wake.nodes.map((node) => node.event.id)),
+    new Set([decision.event.id, constraint.event.id])
+  );
+  assert.equal(wake.links[0]?.relation, "caused_by");
+  assert.equal(
+    wake.nodes.find((node) => node.event.id === constraint.event.id)
+      ?.evidence[0]?.excerpt,
+    "We need the service to remain self-contained."
+  );
+
+  assert.equal(
+    await logbook.getWake(
+      { guildId: "different-guild", channelId: "channel" },
+      decision.event.id
+    ),
+    null
+  );
+});

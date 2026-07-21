@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { generateObject } from "ai";
+import { generateText, Output } from "ai";
 import { and, desc, gt, sql } from "drizzle-orm";
 import yaml from "js-yaml";
 import { z } from "zod";
@@ -87,9 +87,9 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
 
   let result: z.infer<typeof proposalSchema>;
   try {
-    const r = await generateObject({
+    const r = await generateText({
       model: getLLMProvider(undefined, modelId),
-      schema: proposalSchema,
+      output: Output.object({ schema: proposalSchema }),
       prompt: [
         "Scan these recent user requests for recurring task patterns that a focused skill could serve better than a generic response.",
         "Only propose skills for patterns you see at least 3 times. Don't propose skills that duplicate what already exists.",
@@ -104,7 +104,7 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
       ].join("\n"),
       maxRetries: 1,
     });
-    result = r.object;
+    result = r.output;
     ctx.tokenUsage +=
       (r.usage?.inputTokens ?? 0) + (r.usage?.outputTokens ?? 0);
   } catch (err) {

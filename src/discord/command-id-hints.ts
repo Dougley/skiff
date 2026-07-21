@@ -42,6 +42,7 @@ export enum CommandHintKey {
   Memory = "memory",
   Topic = "topic",
   Logbook = "logbook",
+  Wake = "wake",
   SleepCycle = "sleep-cycle",
 }
 

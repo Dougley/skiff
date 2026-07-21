@@ -18,6 +18,7 @@ export type ChangeKind =
   | "topic_merge"
   | "topic_new"
   | "fact_resolve"
+  | "wake_link"
   | "skill_author";
 
 /**
