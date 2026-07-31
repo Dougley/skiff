@@ -76,6 +76,7 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint |
 | `VISION_ENABLED` | `true` | Enable/disable vision (image) support |
 | `LLM_MAX_OUTPUT_TOKENS` | `8192` | Maximum output tokens requested per generation step |
+| `LLM_REASONING_EFFORT` | -- | `off`, `minimal`, `low`, `medium`, or `high`. Unset leaves the provider default. Maps to `reasoning_effort` on OpenAI/Ollama and an extended-thinking token budget on Anthropic (1k/4k/8k/16k, reserved on top of `LLM_MAX_OUTPUT_TOKENS`) |
 | `LLM_TURN_TIMEOUT_MS` | `180000` | Overall timeout for one conversational turn |
 
 ### Memory & RAG

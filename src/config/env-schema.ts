@@ -59,6 +59,10 @@ export const environmentVariableSchema = z.object({
   SHELL_ALLOWED_DIRS: z.string().default("/tmp"),
   CONTEXT_WINDOW_SIZE: z.coerce.number().int().min(1).default(200_000),
   LLM_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).default(8192),
+  // Unset = don't send anything and let the provider/model decide.
+  LLM_REASONING_EFFORT: z
+    .enum(["off", "minimal", "low", "medium", "high"])
+    .optional(),
   LLM_TURN_TIMEOUT_MS: z.coerce
     .number()
     .int()

@@ -19,6 +19,7 @@ import type { DiscordToolContext, TurnAttachment } from "../tools/discord.js";
 import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import { llmProvider } from "./provider.js";
+import { reasoningProviderOptions, thinkingBudgetTokens } from "./reasoning.js";
 import { getSystemPrompt } from "./system-prompt.js";
 import type { MessageContext } from "./types.js";
 
@@ -193,10 +194,13 @@ const MAX_CONTEXT_SAFETY_BUFFER = 20_000;
 function maxOutputTokens(): number {
   // Never reserve most of a small local model's context for output. The
   // configured cap still wins for normal large-context models.
-  return Math.max(
+  const base = Math.max(
     256,
     Math.min(env.LLM_MAX_OUTPUT_TOKENS, Math.floor(env.CONTEXT_WINDOW_SIZE / 4))
   );
+  // Anthropic thinking tokens count toward max_tokens; reserve them on top so
+  // thinking can't starve the visible response.
+  return base + thinkingBudgetTokens();
 }
 
 function contextOverflowThreshold(): number {
@@ -402,6 +406,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         ...tagLastMessageForCaching(messagesForCall),
       ],
       maxOutputTokens: maxOutputTokens(),
+      providerOptions: reasoningProviderOptions(),
       abortSignal: turnAbortSignal,
     }).catch((err) => {
       if (isProviderContextOverflowError(err)) {
@@ -489,6 +494,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
         maxOutputTokens: maxOutputTokens(),
+        providerOptions: reasoningProviderOptions(),
         abortSignal: turnAbortSignal,
       }).catch((err) => {
         // Providers use different messages for context overflow. Retrying the
