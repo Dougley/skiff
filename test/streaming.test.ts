@@ -176,3 +176,49 @@ test("shows tool-round narration live but excludes it from the final answer", as
   assert.equal(result.text, "Done.");
   assert.equal(model.doGenerateCalls.length, 3);
 });
+
+test("emits a reasoning event from reasoning text when usage lacks a breakdown", async () => {
+  const [{ chat }, { env }, { initAccessConfig }] = await Promise.all([
+    import("../src/ai/llm/streaming.js"),
+    import("../src/config/env.js"),
+    import("../src/config/access.js"),
+  ]);
+  initAccessConfig(env);
+
+  // anthropic-style step: thinking text present, usage.reasoning stays 0
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => ({
+      content: [
+        { type: "reasoning", text: "x".repeat(400) },
+        { type: "text", text: "answer" },
+      ],
+      finishReason: { unified: "stop", raw: "stop" },
+      usage,
+      warnings: [],
+    }),
+  });
+  const activity: import("../src/ai/llm/streaming.js").ToolActivityEvent[] = [];
+  const result = await chat({
+    model,
+    maxSteps: 1,
+    messages: [{ role: "user", content: "hi" }],
+    toolSet: {},
+    toolContext: {
+      client: fakeClient,
+      guildId: null,
+      channelId: "channel",
+      userId: null,
+    },
+    onToolActivity: (event) => activity.push(event),
+  });
+
+  assert.equal(result.text, "answer");
+  const reasoning = activity.filter((event) => event.type === "reasoning");
+  assert.equal(reasoning.length, 1);
+  // 400 chars at ~4 chars/token, flagged as an estimate
+  assert.equal(reasoning[0]?.type === "reasoning" && reasoning[0].tokens, 100);
+  assert.equal(
+    reasoning[0]?.type === "reasoning" && reasoning[0].estimated,
+    true
+  );
+});

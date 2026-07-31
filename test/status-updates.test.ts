@@ -42,6 +42,70 @@ test("new tool-round narration replaces older narration", async () => {
   assert.ok(status.includes("Still working."));
 });
 
+test("folds reasoning into one cumulative tail count instead of per-step lines", async () => {
+  const { formatToolStatusMessage } = await import(
+    "../src/utils/tool-status.js"
+  );
+  const events: ToolActivityEvent[] = [
+    { type: "reasoning", stepNumber: 0, tokens: 1000, estimated: false },
+    {
+      type: "tool",
+      stepNumber: 0,
+      toolName: "web_search",
+      args: {},
+      output: null,
+    },
+    { type: "reasoning", stepNumber: 1, tokens: 500, estimated: true },
+    {
+      type: "tool",
+      stepNumber: 1,
+      toolName: "fetch_url",
+      args: {},
+      output: null,
+    },
+  ];
+
+  const status = formatToolStatusMessage(events, false);
+
+  // one aggregate mention, not one line per reasoning step
+  assert.equal(status.split("thinking tokens").length - 1, 1);
+  // any estimated step marks the whole total as approximate
+  assert.ok(status.includes("~1.5k thinking tokens"));
+
+  const withoutReasoning = formatToolStatusMessage(
+    events.filter((e) => e.type === "tool"),
+    false
+  );
+  assert.ok(!withoutReasoning.includes("thinking tokens"));
+});
+
+test("done summary aggregates thinking tokens across steps", async () => {
+  const { formatToolStatusMessage } = await import(
+    "../src/utils/tool-status.js"
+  );
+  const events: ToolActivityEvent[] = [
+    { type: "reasoning", stepNumber: 0, tokens: 800, estimated: false },
+    {
+      type: "tool",
+      stepNumber: 0,
+      toolName: "web_search",
+      args: {},
+      output: null,
+    },
+    { type: "reasoning", stepNumber: 1, tokens: 400, estimated: false },
+  ];
+
+  const status = formatToolStatusMessage(events, true);
+
+  assert.ok(status.includes("Used 1 tool"));
+  // exact counts get no approximation marker
+  assert.ok(status.includes(" 1.2k thinking tokens"));
+  assert.ok(!status.includes("~1.2k"));
+
+  const noThinking = formatToolStatusMessage([events[1]!], true);
+  assert.ok(!noThinking.includes("thinking tokens"));
+});
+
 test("serializes edits and drains the newest status before final replacement", async () => {
   const applied: string[] = [];
   let concurrent = 0;

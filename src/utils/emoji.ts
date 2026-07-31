@@ -12,4 +12,5 @@ export const EMOJI = {
   discord: "<:discord:1473324059117748235>",
   tool: "<:tool:1473454254864728245>",
   robot: "<:robot:1473673610093658275>",
+  brain: "<:brain:1532885231114256518>",
 } as const;

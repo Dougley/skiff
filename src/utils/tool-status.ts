@@ -142,6 +142,12 @@ function randomLoadingLine(): string {
   );
 }
 
+function formatTokenCount(tokens: number): string {
+  return tokens >= 1000
+    ? `${(tokens / 1000).toFixed(1).replace(/\.0$/, "")}k`
+    : `${tokens}`;
+}
+
 function formatEventLine(event: ToolEvent): string {
   // Show custom status text for update_status tool calls
   if (event.toolName === "update_status" && isStatusOutput(event.output)) {
@@ -172,9 +178,12 @@ const COLLAPSE_TAIL = 2;
  */
 type ToolEvent = Extract<ToolActivityEvent, { type: "tool" }>;
 type TextEvent = Extract<ToolActivityEvent, { type: "text" }>;
+type ReasoningEvent = Extract<ToolActivityEvent, { type: "reasoning" }>;
 
 const isToolEvent = (e: ToolActivityEvent): e is ToolEvent => e.type === "tool";
 const isTextEvent = (e: ToolActivityEvent): e is TextEvent => e.type === "text";
+const isReasoningEvent = (e: ToolActivityEvent): e is ReasoningEvent =>
+  e.type === "reasoning";
 
 // Cap narration so a chatty step cannot exceed Discord's TextDisplay limit.
 const NARRATION_MAX_CHARS = 500;
@@ -189,12 +198,23 @@ export function formatToolStatusMessage(
   events: ToolActivityEvent[],
   done: boolean
 ): string {
-  // reasoning events are internal — only tool calls and interim narration are shown
   // update_status is treated specially: excluded from the tree, used as the tail line
   const toolEvents = events.filter(
     (e): e is ToolEvent => isToolEvent(e) && e.toolName !== "update_status"
   );
   const narrations = events.filter(isTextEvent);
+
+  // reasoning models think between every tool call, so per-step lines would
+  // drown the tree. fold the running total into the tail line instead —
+  // absent entirely when the model reported no reasoning.
+  const reasoningEvents = events.filter(isReasoningEvent);
+  const reasoningTotal = reasoningEvents.reduce((sum, e) => sum + e.tokens, 0);
+  // any estimated step makes the whole total approximate
+  const approx = reasoningEvents.some((e) => e.estimated) ? "~" : "";
+  const thinkingSuffix =
+    reasoningTotal > 0
+      ? ` · ${EMOJI.brain} ${approx}${formatTokenCount(reasoningTotal)} thinking tokens`
+      : "";
 
   // latest update_status text becomes the tail instead of a random loading line
   const lastStatus = events
@@ -203,15 +223,15 @@ export function formatToolStatusMessage(
     .at(-1);
   const tailLine =
     lastStatus && isStatusOutput(lastStatus.output)
-      ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}`
-      : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}`;
+      ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
+      : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
 
   if (done) {
     // collapsed single-line summary for completed turns — narration is
     // ephemeral, the final reply replaces it
     const usedWebSearch = toolEvents.some((e) => e.toolName === "web_search");
     const count = toolEvents.length;
-    let summary = `-# ${EMOJI.tool} Used ${count} tool${count === 1 ? "" : "s"}`;
+    let summary = `-# ${EMOJI.tool} Used ${count} tool${count === 1 ? "" : "s"}${thinkingSuffix}`;
     if (usedWebSearch) {
       summary += `\n-# ${EMOJI.internet} Web results may be inaccurate or outdated.`;
     }
@@ -227,8 +247,8 @@ export function formatToolStatusMessage(
   if (toolEvents.length === 0) {
     const bare =
       lastStatus && isStatusOutput(lastStatus.output)
-        ? `-# ${EMOJI.robot} ${lastStatus.output.status}`
-        : `-# ${EMOJI.loading} ${randomLoadingLine()}`;
+        ? `-# ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
+        : `-# ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
     return [...narrationLines, bare].join("\n");
   }
 

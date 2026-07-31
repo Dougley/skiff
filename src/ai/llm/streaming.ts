@@ -115,6 +115,8 @@ export type ToolActivityEvent =
       stepNumber: number;
       /** Number of reasoning tokens used in this step. */
       tokens: number;
+      /** True when `tokens` is derived from thinking-text length rather than provider usage. */
+      estimated: boolean;
     }
   | {
       type: "text";
@@ -523,12 +525,22 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
           usage: step.usage,
         });
 
-        const reasoningTokens = step.usage.outputTokenDetails?.reasoningTokens;
-        if (reasoningTokens && reasoningTokens > 0) {
+        // openai reports reasoning tokens in usage; anthropic never breaks
+        // them out but does stream the thinking text, so estimate from that
+        // (~4 chars/token). no signal at all -> no event, keeping this quiet
+        // for models that don't reason.
+        const reportedReasoningTokens =
+          step.usage.outputTokenDetails?.reasoningTokens ?? 0;
+        const estimated = reportedReasoningTokens === 0;
+        const reasoningTokens = estimated
+          ? Math.ceil((step.reasoningText?.length ?? 0) / 4)
+          : reportedReasoningTokens;
+        if (reasoningTokens > 0) {
           onToolActivity?.({
             type: "reasoning",
             stepNumber: stepCounter,
             tokens: reasoningTokens,
+            estimated,
           });
         }
 
