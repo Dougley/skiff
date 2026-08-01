@@ -3,6 +3,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import type { EmbeddingModel, Provider } from "ai";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
+import { retryLoggingFetch } from "./retry.js";
 
 function normalizeOllamaBaseUrl(baseUrl: string): string {
   const trimmed = baseUrl.replace(/\/+$/, "");
@@ -29,6 +30,7 @@ export function getLLMProvider(provider?: Provider, modelOverride?: string) {
       const openai = createOpenAI({
         apiKey: env.OPENAI_API_KEY,
         baseURL: env.OPENAI_API_BASE_URL,
+        fetch: retryLoggingFetch,
       });
       logger.debug(
         `OpenAI provider created${env.OPENAI_API_BASE_URL ? ` with base URL: ${env.OPENAI_API_BASE_URL}` : ""}`
@@ -42,6 +44,7 @@ export function getLLMProvider(provider?: Provider, modelOverride?: string) {
       const anthropic = createAnthropic({
         apiKey: env.ANTHROPIC_API_KEY,
         baseURL: env.ANTHROPIC_API_BASE_URL,
+        fetch: retryLoggingFetch,
       });
       logger.debug(
         `Anthropic provider created${env.ANTHROPIC_API_BASE_URL ? ` with base URL: ${env.ANTHROPIC_API_BASE_URL}` : ""}`
@@ -66,6 +69,7 @@ export function getLLMProvider(provider?: Provider, modelOverride?: string) {
       const ollama = createOpenAI({
         apiKey,
         baseURL,
+        fetch: retryLoggingFetch,
       });
       logger.debug(`Ollama provider created with base URL: ${baseURL}`);
       return ollama.chat(selectedModel);
@@ -87,6 +91,7 @@ export function getEmbeddingProvider(): EmbeddingModel | null {
       const openai = createOpenAI({
         apiKey: env.OPENAI_API_KEY,
         baseURL: env.OPENAI_API_BASE_URL,
+        fetch: retryLoggingFetch,
       });
       logger.debug(
         `OpenAI embedding provider created${env.OPENAI_API_BASE_URL ? ` with base URL: ${env.OPENAI_API_BASE_URL}` : ""}`
@@ -111,6 +116,7 @@ export function getEmbeddingProvider(): EmbeddingModel | null {
       const ollama = createOpenAI({
         apiKey,
         baseURL,
+        fetch: retryLoggingFetch,
       });
       const model = env.EMBEDDING_MODEL;
       logger.debug(

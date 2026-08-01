@@ -86,6 +86,8 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 
 Provider calls retry with exponential backoff, honouring `Retry-After`. Only worthwhile failures are retried: HTTP 408/409/429/5xx and connection errors. A 4xx from a malformed request fails immediately, as does an abort or a timeout. Retries wrap the model call itself, so a retried turn never re-runs tools that already executed.
 
+Every transient failure is logged as it happens, so a blip that the retry recovers from still shows up as a `WARN` rather than passing silently — that's the signal that a provider is degrading before it starts failing outright. Exhausting the budget is reported by the call site as usual, with the attempt count in the message.
+
 Retries share the turn budget rather than extending it — `LLM_TURN_TIMEOUT_MS` still caps the whole turn, and a timeout during backoff aborts rather than hanging. Web and Discord calls have their own error handling and aren't governed by `LLM_MAX_RETRIES`.
 
 #### Switching models at runtime
