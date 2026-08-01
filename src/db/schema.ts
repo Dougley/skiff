@@ -24,7 +24,13 @@ export const conversations = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     channelId: text("channel_id").notNull(),
     guildId: text("guild_id"),
+    // the model this conversation was created under — historical, not the
+    // model a turn runs on
     model: text("model").notNull(),
+    // runtime `/model` selection for this channel. null follows
+    // LLM_DEFAULT_MODEL, so changing the env default still moves every
+    // channel that never opted out
+    modelOverride: text("model_override"),
     systemPrompt: text("system_prompt"),
     // rolling compaction: summary of messages up to (and including)
     // summary_up_to_message_id, which are excluded from the prompt history

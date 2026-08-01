@@ -1,5 +1,5 @@
 import type { ToolCallPart, ToolContent } from "@ai-sdk/provider-utils";
-import { and, desc, eq, gt, isNotNull, lt, or } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { env } from "../config/env.js";
 import { conversations, db, heartbeatChannels, messages } from "./index.js";
 import type { Conversation, DBMessage } from "./schema.js";
@@ -30,6 +30,53 @@ export async function getOrCreateConversation(
 
   if (!upserted[0]) throw new Error("Failed to create conversation");
   return upserted[0];
+}
+
+// matches the (channel_id, guild_id) unique index, which treats nulls as equal
+function conversationKey(channelId: string, guildId: string | null) {
+  return and(
+    eq(conversations.channelId, channelId),
+    guildId ? eq(conversations.guildId, guildId) : isNull(conversations.guildId)
+  );
+}
+
+/** Read a conversation without creating one. Null when the channel has no history yet. */
+export async function getConversation(params: {
+  channelId: string;
+  guildId: string | null;
+}): Promise<Conversation | null> {
+  const rows = await db
+    .select()
+    .from(conversations)
+    .where(conversationKey(params.channelId, params.guildId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Set (or clear, with null) this channel's runtime model override. Creates the
+ * conversation row when the channel hasn't been used yet, so `/model` works
+ * before the first message.
+ */
+export async function setConversationModelOverride(params: {
+  channelId: string;
+  guildId: string | null;
+  model: string | null;
+}): Promise<void> {
+  await db
+    .insert(conversations)
+    .values({
+      channelId: params.channelId,
+      guildId: params.guildId ?? null,
+      // `model` records what the conversation was created under and stays
+      // historical — the runtime selection lives in modelOverride
+      model: env.LLM_DEFAULT_MODEL,
+      modelOverride: params.model,
+    })
+    .onConflictDoUpdate({
+      target: [conversations.channelId, conversations.guildId],
+      set: { modelOverride: params.model, updatedAt: new Date() },
+    });
 }
 
 export type MessageInsert = {
@@ -133,27 +180,36 @@ export async function getLastAssistantInputTokens(
 /**
  * Delete a conversation and all its messages/embeddings (via cascade).
  * Returns true if a conversation was found and deleted.
+ *
+ * A `/model` selection survives: clearing is about history, not settings, so
+ * the override is carried onto a fresh row rather than silently reverting the
+ * channel to the default.
  */
 export async function deleteConversation(params: {
   channelId: string;
   guildId: string | null;
 }): Promise<boolean> {
   const existing = await db
-    .select({ id: conversations.id })
+    .select({
+      id: conversations.id,
+      modelOverride: conversations.modelOverride,
+    })
     .from(conversations)
-    .where(
-      params.guildId
-        ? and(
-            eq(conversations.channelId, params.channelId),
-            eq(conversations.guildId, params.guildId)
-          )
-        : eq(conversations.channelId, params.channelId)
-    )
+    // same key the row was created under, so the delete and the re-insert
+    // below can't land on different rows
+    .where(conversationKey(params.channelId, params.guildId))
     .limit(1);
 
   if (!existing[0]) return false;
 
   await db.delete(conversations).where(eq(conversations.id, existing[0].id));
+
+  if (existing[0].modelOverride) {
+    await setConversationModelOverride({
+      ...params,
+      model: existing[0].modelOverride,
+    });
+  }
 
   return true;
 }

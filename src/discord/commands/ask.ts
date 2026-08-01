@@ -7,6 +7,11 @@ import {
   TextDisplayBuilder,
 } from "discord.js";
 import { handleConversationTurn } from "../../ai/llm/conversation-turn.js";
+import {
+  allowedModels,
+  isModelAllowed,
+  MAX_MODEL_CHOICES,
+} from "../../ai/llm/models.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { createLatestUpdateQueue } from "../../utils/latest-update-queue.js";
@@ -22,6 +27,10 @@ export class AskCommand extends Command {
   }
 
   public override registerApplicationCommands(registry: Command.Registry) {
+    // choices are baked at registration; an empty LLM_ALLOWED_MODELS leaves
+    // the option free-text. see /model for the channel-wide equivalent.
+    const choices = allowedModels().slice(0, MAX_MODEL_CHOICES);
+
     const buildBase = (builder: SlashCommandBuilder) =>
       builder
         .setName("ask")
@@ -31,7 +40,18 @@ export class AskCommand extends Command {
             .setName("question")
             .setDescription("Your question for the assistant")
             .setRequired(true)
-        );
+        )
+        .addStringOption((option) => {
+          option
+            .setName("model")
+            .setDescription(
+              "Use a different model for this question only (defaults to the channel's model)"
+            )
+            .setRequired(false);
+          return choices.length > 0
+            ? option.addChoices(...choices.map((m) => ({ name: m, value: m })))
+            : option;
+        });
 
     if (env.GUILD_ID) {
       registry.registerChatInputCommand((builder) => buildBase(builder), {
@@ -65,6 +85,13 @@ export class AskCommand extends Command {
     await interaction.deferReply();
 
     const question = interaction.options.getString("question", true);
+    const requestedModel = interaction.options.getString("model")?.trim();
+    if (requestedModel && !isModelAllowed(requestedModel)) {
+      await interaction.editReply(
+        `\`${requestedModel}\` isn't an allowed model, so I didn't run the question. Use \`/model show\` to see what's available.`
+      );
+      return;
+    }
     const channel = interaction.channel;
     const channelName =
       channel && "name" in channel ? `#${channel.name}` : "DM";
@@ -88,6 +115,7 @@ export class AskCommand extends Command {
       userId: interaction.user.id,
       channelId: interaction.channelId,
       guildId: interaction.guildId,
+      modelOverride: requestedModel,
       skipInitialStatus: true,
       toolContext: {
         client: this.container.client,

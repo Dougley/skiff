@@ -35,6 +35,8 @@ import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
 import { formatSourceRef } from "../tools/sources.js";
+import { resolveModel } from "./models.js";
+import { getLLMProvider } from "./provider.js";
 import {
   ContextWindowFullError,
   chat as chatWithLLM,
@@ -67,6 +69,11 @@ export interface ConversationTurnParams {
   messageContext: MessageContext;
   /** Image attachments to send as vision content (only sent if VISION_ENABLED). */
   images?: ImageAttachment[];
+  /**
+   * Model for this turn only, overriding the channel's `/model` selection.
+   * Ignored when it isn't on the LLM_ALLOWED_MODELS allowlist.
+   */
+  modelOverride?: string | null;
   /**
    * Called (debounced) when tool activity updates occur.
    * Receives the formatted status text to display.
@@ -151,6 +158,7 @@ export async function handleConversationTurn(
     onToolStatus,
     skipInitialStatus,
     skipMemory,
+    modelOverride,
   } = params;
 
   // conversation & history (rows already folded into the compaction summary
@@ -162,6 +170,12 @@ export async function handleConversationTurn(
     conversation.summaryUpToMessageId
   );
   const priorInputTokens = await getLastAssistantInputTokens(conversation.id);
+
+  // per-turn override wins over the channel's /model selection; both fall back
+  // to LLM_DEFAULT_MODEL. built per turn rather than reusing the module-level
+  // singleton so a switch takes effect without a restart.
+  const modelId = resolveModel(modelOverride ?? conversation.modelOverride);
+  const model = getLLMProvider(undefined, modelId);
 
   // persist user message
   const userMsg = await insertMessage({
@@ -257,6 +271,7 @@ export async function handleConversationTurn(
   ) =>
     chatWithLLM({
       messages: [...historyToMessages(hist), currentUserMessage],
+      model,
       userId,
       toolContext,
       messageContext,
@@ -494,6 +509,7 @@ export async function handleConversationTurn(
   logger.debug("conversation turn complete", {
     userId,
     channelId,
+    model: modelId,
     toolCount: toolEvents.length,
     messageChunks: messages.length,
     historyLength: history.length + 2,

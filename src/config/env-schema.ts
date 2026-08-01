@@ -26,6 +26,9 @@ export const environmentVariableSchema = z.object({
     .enum(["development", "production", "test"])
     .default("development"),
   LLM_DEFAULT_MODEL: z.string().default("gpt-4o-mini"),
+  // Comma-separated models `/model` and `/ask model:` may select. Empty means
+  // no restriction (any model id the provider accepts).
+  LLM_ALLOWED_MODELS: z.string().default(""),
   LLM_DEFAULT_PROVIDER: z
     .enum(["openai", "anthropic", "ollama"])
     .default("openai"),

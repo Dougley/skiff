@@ -18,6 +18,8 @@ type SystemPromptOptions = {
   conversationSummary?: string | null;
   /** Active Logbook storylines relevant to the current message. */
   logbookContext?: string[];
+  /** Model serving this turn. Defaults to LLM_DEFAULT_MODEL. */
+  model?: string;
 };
 
 /**
@@ -126,7 +128,7 @@ export const getSystemPrompt = (
   variableParts.push(
     `\n## Context`,
     `Current time: ${now.toISOString()}`,
-    `Model: ${env.LLM_DEFAULT_MODEL}`
+    `Model: ${options?.model ?? env.LLM_DEFAULT_MODEL}`
   );
 
   if (options?.conversationSummary) {

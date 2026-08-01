@@ -284,6 +284,9 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     } as ToolSet);
 
   const model = ctx.model ?? llmProvider;
+  // the prompt tells the model what it's running as, so it has to name the
+  // model actually serving the turn, not the configured default
+  const modelId = typeof model === "string" ? model : model.modelId;
   let userFacts: string[] = [];
   if (ctx.userId) {
     try {
@@ -310,6 +313,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
     channelId: toolContext.channelId,
     conversationSummary: ctx.conversationSummary,
     logbookContext: ctx.logbookContext,
+    model: modelId,
   });
 
   // two system messages let us put an anthropic cache breakpoint between

@@ -15,6 +15,7 @@ A personality-driven, multi-turn conversational agent for Discord, built with Ty
 ## Features
 
 - **Multi-turn conversations** via `/ask`, `/clear`, and @mentions
+- **Switch models on the fly**, `/model` per channel or `/ask model:` for a single question
 - **Long-term memory**, semantic search, automatic fact extraction, and topic knowledge
 - **Living Logbook**, durable storylines with decisions, commitments, risks, and open questions
 - **The Wake**, evidence-backed causal trails explaining how decisions and outcomes came to be
@@ -66,7 +67,8 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISCORD_BOT_TOKEN` | **required** | Your Discord bot token |
-| `LLM_DEFAULT_MODEL` | `gpt-4o-mini` | Model to use for chat |
+| `LLM_DEFAULT_MODEL` | `gpt-4o-mini` | Model to use for chat, unless a channel overrides it with `/model` |
+| `LLM_ALLOWED_MODELS` | -- | Comma-separated models `/model` and `/ask model:` may select. Unset means any model the provider accepts. The first 25 appear as slash-command choices (Discord's limit) |
 | `LLM_DEFAULT_PROVIDER` | `openai` | `openai`, `anthropic`, or `ollama` |
 | `OPENAI_API_KEY` | -- | OpenAI API key |
 | `OPENAI_API_BASE_URL` | -- | Custom OpenAI-compatible endpoint |
@@ -78,6 +80,19 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `LLM_MAX_OUTPUT_TOKENS` | `8192` | Maximum output tokens requested per generation step |
 | `LLM_REASONING_EFFORT` | -- | `off`, `minimal`, `low`, `medium`, or `high`. Unset leaves the provider default. Maps to `reasoning_effort` on OpenAI/Ollama and an extended-thinking token budget on Anthropic (1k/4k/8k/16k, reserved on top of `LLM_MAX_OUTPUT_TOKENS`) |
 | `LLM_TURN_TIMEOUT_MS` | `180000` | Overall timeout for one conversational turn |
+
+#### Switching models at runtime
+
+`LLM_DEFAULT_MODEL` is the fallback, not a hard setting. Without restarting:
+
+- `/model set <model>` points this channel at another model. It sticks for @mentions too, and the conversation history carries over.
+- `/model show` reports what the channel is using and what it may pick.
+- `/model reset` goes back to `LLM_DEFAULT_MODEL`.
+- `/ask question:… model:…` overrides one question only, leaving the channel's model alone.
+
+The `Ask` context-menu commands take no options, so they follow the channel's `/model`. Background work (memory extraction, sleep phases) keeps using `MEMORY_EXTRACT_MODEL` / `LLM_DEFAULT_MODEL` and is deliberately unaffected, so a channel on an expensive model doesn't drag the batch jobs along.
+
+Only the model moves; the provider stays `LLM_DEFAULT_PROVIDER`, so pick models that provider serves. A channel with no override always follows `LLM_DEFAULT_MODEL`, so changing the env default still moves every channel that never opted out. Set `LLM_ALLOWED_MODELS` anywhere `/model` is reachable by people you'd rather not hand your priciest model to — a model that later drops off the allowlist falls back to the default instead of stranding the channel.
 
 ### Memory & RAG
 

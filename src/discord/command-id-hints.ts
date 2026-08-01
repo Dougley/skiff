@@ -40,6 +40,7 @@ export enum CommandHintKey {
   AskUser = "ask-user",
   Clear = "clear",
   Memory = "memory",
+  Model = "model",
   Topic = "topic",
   Logbook = "logbook",
   Wake = "wake",
