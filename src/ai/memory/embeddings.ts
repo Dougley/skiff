@@ -2,6 +2,7 @@ import { type Embedding, embed } from "ai";
 import { logger } from "../../config/logger.js";
 import { db, messageEmbeddings } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import { normalizeEmbeddingDimensions } from "./vector.js";
 
 export type EmbeddingJob = {
@@ -52,6 +53,7 @@ export async function enqueueEmbedding(job: EmbeddingJob): Promise<boolean> {
       const result = await embed({
         model,
         value: job.content,
+        maxRetries: llmMaxRetries(),
       });
       await writeEmbedding(job, result.embedding);
       logger.debug("embedding stored", {

@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import { cosineSimilarity } from "../../../ai/memory/vector.js";
 import { env } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
@@ -93,7 +94,7 @@ export async function dedupeTopics(ctx: DreamContext): Promise<void> {
             `Summary: ${b.summary}`,
             `Tags: ${(b.tags ?? []).join(", ")}`,
           ].join("\n"),
-          maxRetries: 1,
+          maxRetries: llmMaxRetries(),
         });
         merged = r.output;
         ctx.tokenUsage +=

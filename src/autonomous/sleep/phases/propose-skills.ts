@@ -5,6 +5,7 @@ import { and, desc, gt, sql } from "drizzle-orm";
 import yaml from "js-yaml";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import { getAllSkills, reloadSkills } from "../../../ai/skills/index.js";
 import { env } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
@@ -102,7 +103,7 @@ export async function proposeSkills(ctx: DreamContext): Promise<void> {
           .slice(0, 80)
           .map((m, i) => `[${i + 1}] ${(m.content ?? "").slice(0, 300)}`),
       ].join("\n"),
-      maxRetries: 1,
+      maxRetries: llmMaxRetries(),
     });
     result = r.output;
     ctx.tokenUsage +=

@@ -6,6 +6,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, topicKnowledge } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import {
   normalizeEmbeddingDimensions,
   toVectorLiteral,
@@ -106,7 +107,11 @@ export const createTopicTools = (ctx: DiscordToolContext) => ({
 
       let embedding: Embedding;
       try {
-        const result = await embed({ model, value: query });
+        const result = await embed({
+          model,
+          value: query,
+          maxRetries: llmMaxRetries(),
+        });
         embedding = normalizeEmbeddingDimensions(result.embedding);
         logger.debug("topic_search embedding created", {
           queryLength: query.length,

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { getLLMProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import { storeExtraction } from "./store.js";
 
 export const userFactSchema = z.object({
@@ -90,7 +91,7 @@ export async function extractMemory(
       model,
       output: Output.object({ schema: memoryExtractionSchema }),
       prompt: buildPrompt(nonEmpty),
-      maxRetries: 1,
+      maxRetries: llmMaxRetries(),
     });
     const normalized: MemoryExtraction = {
       userFacts: result.output.userFacts.map((fact) => ({

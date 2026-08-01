@@ -6,6 +6,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { db, messageEmbeddings, messages } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import { upsertUserFacts } from "../memory/store.js";
 import {
   normalizeEmbeddingDimensions,
@@ -146,6 +147,7 @@ export const createMemoryTools = (ctx: DiscordToolContext) => ({
         const embedResult = await embed({
           model: embeddingProvider,
           value: query,
+          maxRetries: llmMaxRetries(),
         });
         embedding = normalizeEmbeddingDimensions(embedResult.embedding);
         logger.debug("memory_search embedding created", {

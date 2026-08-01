@@ -79,7 +79,14 @@ All config lives in environment variables. Only `DISCORD_BOT_TOKEN` and a LLM pr
 | `VISION_ENABLED` | `true` | Enable/disable vision (image) support |
 | `LLM_MAX_OUTPUT_TOKENS` | `8192` | Maximum output tokens requested per generation step |
 | `LLM_REASONING_EFFORT` | -- | `off`, `minimal`, `low`, `medium`, or `high`. Unset leaves the provider default. Maps to `reasoning_effort` on OpenAI/Ollama and an extended-thinking token budget on Anthropic (1k/4k/8k/16k, reserved on top of `LLM_MAX_OUTPUT_TOKENS`) |
-| `LLM_TURN_TIMEOUT_MS` | `180000` | Overall timeout for one conversational turn |
+| `LLM_MAX_RETRIES` | `2` | Retries *after* the first attempt, so the default is 3 tries. Applies to every provider call — chat, embeddings, memory extraction, and the sleep phases. `0` disables retrying |
+| `LLM_TURN_TIMEOUT_MS` | `180000` | Overall timeout for one conversational turn, retries and their backoff included |
+
+#### Upstream failures
+
+Provider calls retry with exponential backoff, honouring `Retry-After`. Only worthwhile failures are retried: HTTP 408/409/429/5xx and connection errors. A 4xx from a malformed request fails immediately, as does an abort or a timeout. Retries wrap the model call itself, so a retried turn never re-runs tools that already executed.
+
+Retries share the turn budget rather than extending it — `LLM_TURN_TIMEOUT_MS` still caps the whole turn, and a timeout during backoff aborts rather than hanging. Web and Discord calls have their own error handling and aren't governed by `LLM_MAX_RETRIES`.
 
 #### Switching models at runtime
 

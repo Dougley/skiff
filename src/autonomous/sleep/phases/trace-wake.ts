@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import {
   linkStorylineEvents,
   WAKE_RELATIONS,
@@ -99,7 +100,7 @@ export async function traceWake(ctx: DreamContext): Promise<void> {
             `- #${event.id} [${event.kind}] (${event.storylineTitle}) ${event.summary}${event.details ? ` — ${event.details}` : ""}`
         ),
       ].join("\n"),
-      maxRetries: 1,
+      maxRetries: llmMaxRetries(),
     });
     proposed = result.output;
     ctx.tokenUsage +=

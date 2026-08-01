@@ -3,6 +3,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { logger } from "../../config/logger.js";
 import { db, topicKnowledge, userFacts } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import type { MemoryExtraction } from "./extract.js";
 import { normalizeEmbeddingDimensions } from "./vector.js";
 
@@ -137,6 +138,7 @@ export async function insertTopicSummary(params: {
       const result = await embed({
         model,
         value: `${summary.title}\n${summary.summary}`,
+        maxRetries: llmMaxRetries(),
       });
       embedding = normalizeEmbeddingDimensions(result.embedding);
       if (embedding.length > 0) {

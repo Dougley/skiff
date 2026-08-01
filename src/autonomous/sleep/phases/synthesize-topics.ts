@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import { insertTopicSummary } from "../../../ai/memory/store.js";
 import { cosineSimilarity } from "../../../ai/memory/vector.js";
 import { env } from "../../../config/env.js";
@@ -151,7 +152,7 @@ export async function synthesizeTopics(ctx: DreamContext): Promise<void> {
           "",
           ...excerpts,
         ].join("\n"),
-        maxRetries: 1,
+        maxRetries: llmMaxRetries(),
       });
       synth = r.output;
       ctx.tokenUsage +=

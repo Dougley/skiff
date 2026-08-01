@@ -14,6 +14,7 @@ import {
   storylines,
 } from "../../db/index.js";
 import { embeddingProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 import {
   normalizeEmbeddingDimensions,
   toVectorLiteral,
@@ -79,6 +80,7 @@ async function createStorylineEmbedding(input: {
     const result = await embed({
       model: embeddingProvider,
       value: `${input.title}\nGoal: ${input.goal}\nCurrent state: ${input.currentState}`,
+      maxRetries: llmMaxRetries(),
     });
     return normalizeEmbeddingDimensions(result.embedding);
   } catch (err) {
@@ -543,7 +545,11 @@ export async function findRelevantStorylines(
 
   if (embeddingProvider) {
     try {
-      const result = await embed({ model: embeddingProvider, value: trimmed });
+      const result = await embed({
+        model: embeddingProvider,
+        value: trimmed,
+        maxRetries: llmMaxRetries(),
+      });
       const vector = sql`${toVectorLiteral(normalizeEmbeddingDimensions(result.embedding))}::vector`;
       const distance = sql<number>`(${storylines.embedding} <=> ${vector})`;
       const rows = await db

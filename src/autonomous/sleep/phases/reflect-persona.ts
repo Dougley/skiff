@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import { env } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
 import {
@@ -123,7 +124,7 @@ export async function reflectPersona(ctx: DreamContext): Promise<void> {
         "Recent transcript (oldest first):",
         transcript,
       ].join("\n"),
-      maxRetries: 1,
+      maxRetries: llmMaxRetries(),
     });
     reflection = r.output;
     ctx.tokenUsage +=

@@ -2,6 +2,7 @@ import { generateText, Output } from "ai";
 import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getLLMProvider } from "../../../ai/llm/provider.js";
+import { llmMaxRetries } from "../../../ai/llm/retry.js";
 import { env } from "../../../config/env.js";
 import { logger } from "../../../config/logger.js";
 import { db, messages, userFacts } from "../../../db/index.js";
@@ -107,7 +108,7 @@ export async function consolidateFacts(ctx: DreamContext): Promise<void> {
         model: getLLMProvider(undefined, modelId),
         output: Output.object({ schema: resolutionSchema }),
         prompt,
-        maxRetries: 1,
+        maxRetries: llmMaxRetries(),
       });
       result = r.output;
       ctx.tokenUsage +=

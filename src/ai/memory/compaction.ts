@@ -4,6 +4,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { conversations, db, messages } from "../../db/index.js";
 import { getLLMProvider } from "../llm/provider.js";
+import { llmMaxRetries } from "../llm/retry.js";
 
 // compact once the last turn's input exceeds this fraction of the window —
 // well below the hard refusal threshold so compaction lands before the wall
@@ -95,7 +96,7 @@ export async function compactConversation(
     const result = await generateText({
       model: getLLMProvider(undefined, modelId),
       prompt,
-      maxRetries: 1,
+      maxRetries: llmMaxRetries(),
     });
     const summary = result.text.trim();
     if (!summary) return false;

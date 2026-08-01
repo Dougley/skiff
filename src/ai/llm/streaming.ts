@@ -20,6 +20,7 @@ import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import { llmProvider } from "./provider.js";
 import { reasoningProviderOptions, thinkingBudgetTokens } from "./reasoning.js";
+import { llmMaxRetries } from "./retry.js";
 import { getSystemPrompt } from "./system-prompt.js";
 import type { MessageContext } from "./types.js";
 
@@ -412,6 +413,7 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         ...tagLastMessageForCaching(messagesForCall),
       ],
       maxOutputTokens: maxOutputTokens(),
+      maxRetries: llmMaxRetries(),
       providerOptions: reasoningProviderOptions(),
       abortSignal: turnAbortSignal,
     }).catch((err) => {
@@ -500,6 +502,9 @@ export async function chat(ctx: ChatContext): Promise<ChatResult> {
         tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
         maxOutputTokens: maxOutputTokens(),
+        // retries wrap the model call only, so a retried step never
+        // re-executes tools that already ran in an earlier attempt
+        maxRetries: llmMaxRetries(),
         providerOptions: reasoningProviderOptions(),
         abortSignal: turnAbortSignal,
       }).catch((err) => {
