@@ -20,7 +20,11 @@ import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import { llmProvider } from "./provider.js";
 import { reasoningProviderOptions, thinkingBudgetTokens } from "./reasoning.js";
-import { llmMaxRetries } from "./retry.js";
+import {
+  llmMaxRetries,
+  type RetryNotice,
+  withRetryReporting,
+} from "./retry.js";
 import { getSystemPrompt } from "./system-prompt.js";
 import type { MessageContext } from "./types.js";
 
@@ -125,7 +129,10 @@ export type ToolActivityEvent =
       stepNumber: number;
       /** Interim assistant text produced alongside tool calls, shown live while the turn runs. */
       text: string;
-    };
+    }
+  // no stepNumber: a retry happens inside a provider call, so it isn't tied to
+  // a step in any way the user would recognise
+  | ({ type: "retry" } & RetryNotice);
 
 /** Everything the chat loop needs to run a single turn. */
 export interface ChatContext {
@@ -253,6 +260,15 @@ function appendFinishNotice(text: string, finishReason: string): string {
  * final text + metadata via the returned `ChatResult`.
  */
 export async function chat(ctx: ChatContext): Promise<ChatResult> {
+  // retries live inside the SDK, below anything this loop can observe, so the
+  // reporter is handed down through the async context instead
+  return withRetryReporting(
+    (notice) => ctx.onToolActivity?.({ type: "retry", ...notice }),
+    () => runTurn(ctx)
+  );
+}
+
+async function runTurn(ctx: ChatContext): Promise<ChatResult> {
   const {
     messages,
     toolContext,

@@ -180,10 +180,36 @@ type ToolEvent = Extract<ToolActivityEvent, { type: "tool" }>;
 type TextEvent = Extract<ToolActivityEvent, { type: "text" }>;
 type ReasoningEvent = Extract<ToolActivityEvent, { type: "reasoning" }>;
 
+type RetryEvent = Extract<ToolActivityEvent, { type: "retry" }>;
+
 const isToolEvent = (e: ToolActivityEvent): e is ToolEvent => e.type === "tool";
 const isTextEvent = (e: ToolActivityEvent): e is TextEvent => e.type === "text";
 const isReasoningEvent = (e: ToolActivityEvent): e is ReasoningEvent =>
   e.type === "reasoning";
+
+function formatDelay(ms: number): string {
+  if (ms < 1000) return `${Math.max(0, Math.round(ms))}ms`;
+  const seconds = ms / 1000;
+  return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
+}
+
+/** Tells the user we're waiting on the provider rather than silently stalling. */
+function formatRetryLine(event: RetryEvent): string {
+  const cause = event.status
+    ? `Provider failed (${event.status})`
+    : "Provider unreachable";
+  return `${cause}, trying again in ${formatDelay(event.delayMs)}`;
+}
+
+/**
+ * A retry only matters while it's the thing we're waiting on. Once any later
+ * event lands the turn has moved on, and a stale "trying again" line would be
+ * a lie — so this reads the tail rather than scanning the whole list.
+ */
+function pendingRetry(events: ToolActivityEvent[]): RetryEvent | null {
+  const last = events.at(-1);
+  return last?.type === "retry" ? last : null;
+}
 
 // Cap narration so a chatty step cannot exceed Discord's TextDisplay limit.
 const NARRATION_MAX_CHARS = 500;
@@ -221,8 +247,11 @@ export function formatToolStatusMessage(
     .filter(isToolEvent)
     .filter((e) => e.toolName === "update_status" && isStatusOutput(e.output))
     .at(-1);
-  const tailLine =
-    lastStatus && isStatusOutput(lastStatus.output)
+  // a pending retry outranks both: it's the reason nothing is happening
+  const retry = pendingRetry(events);
+  const tailLine = retry
+    ? `-# ╰ ${EMOJI.loading} ${formatRetryLine(retry)}${thinkingSuffix}`
+    : lastStatus && isStatusOutput(lastStatus.output)
       ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
       : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
 
@@ -245,8 +274,9 @@ export function formatToolStatusMessage(
   const narrationLines = narration ? [formatNarration(narration.text)] : [];
 
   if (toolEvents.length === 0) {
-    const bare =
-      lastStatus && isStatusOutput(lastStatus.output)
+    const bare = retry
+      ? `-# ${EMOJI.loading} ${formatRetryLine(retry)}${thinkingSuffix}`
+      : lastStatus && isStatusOutput(lastStatus.output)
         ? `-# ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
         : `-# ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
     return [...narrationLines, bare].join("\n");

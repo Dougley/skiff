@@ -88,6 +88,8 @@ Provider calls retry with exponential backoff, honouring `Retry-After`. Only wor
 
 Every transient failure is logged as it happens, so a blip that the retry recovers from still shows up as a `WARN` rather than passing silently — that's the signal that a provider is degrading before it starts failing outright. Exhausting the budget is reported by the call site as usual, with the attempt count in the message.
 
+During a chat turn the wait is also shown in the live status message (`Provider failed (503), trying again in 2s`), so a stalled turn reads as waiting rather than hung. It's replaced as soon as the turn moves on.
+
 Retries share the turn budget rather than extending it — `LLM_TURN_TIMEOUT_MS` still caps the whole turn, and a timeout during backoff aborts rather than hanging. Web and Discord calls have their own error handling and aren't governed by `LLM_MAX_RETRIES`.
 
 #### Switching models at runtime

@@ -17,6 +17,10 @@ process.env.MCP_CONFIG_PATH = "/tmp/skiff-test-missing-mcp.json";
 process.env.TOOL_DM_RULES = "discord";
 
 const { chat } = await import("../src/ai/llm/streaming.js");
+type ToolActivityEvent = Parameters<
+  NonNullable<Parameters<typeof chat>[0]["onToolActivity"]>
+>[0];
+const { formatToolStatusMessage } = await import("../src/utils/tool-status.js");
 const { env } = await import("../src/config/env.js");
 const { llmMaxRetries, retryLoggingFetch } = await import(
   "../src/ai/llm/retry.js"
@@ -287,6 +291,145 @@ test("responses pass through the wrapper unchanged", async () => {
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+test("a retry reaches the turn as a status event", async () => {
+  env.LLM_MAX_RETRIES = 2;
+  const events: ToolActivityEvent[] = [];
+  let attempts = 0;
+
+  // the reporter rides the async context down to the transport layer, so this
+  // exercises the real path rather than calling the fetch wrapper directly
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response("overloaded", {
+      status: 503,
+      headers: { "retry-after-ms": "1" },
+    });
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      attempts++;
+      // reach through the wrapper so the failure is seen at the transport layer
+      const response = await retryLoggingFetch(
+        "https://api.example.invalid/v1"
+      );
+      if (attempts <= 2) {
+        void response;
+        throw blip();
+      }
+      return textResult("recovered");
+    },
+  });
+
+  try {
+    const result = await chat({
+      model,
+      messages: [{ role: "user", content: "hi" }],
+      toolSet: {},
+      toolContext: baseToolContext,
+      onToolActivity: (event) => events.push(event),
+    });
+    assert.equal(result.text, "recovered");
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+
+  const retries = events.filter((e) => e.type === "retry");
+  assert.equal(retries.length, 2);
+  assert.equal(retries[0]?.status, 503);
+  assert.equal(retries[0]?.attempt, 1);
+  assert.equal(retries[1]?.attempt, 2);
+});
+
+test("no attempt is promised once the budget is spent", async () => {
+  env.LLM_MAX_RETRIES = 1;
+  const events: ToolActivityEvent[] = [];
+
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("down", { status: 503 });
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      await retryLoggingFetch("https://api.example.invalid/v1");
+      throw blip();
+    },
+  });
+
+  try {
+    await chat({
+      model,
+      messages: [{ role: "user", content: "hi" }],
+      toolSet: {},
+      toolContext: baseToolContext,
+      onToolActivity: (event) => events.push(event),
+    }).catch(() => undefined);
+  } finally {
+    globalThis.fetch = realFetch;
+    env.LLM_MAX_RETRIES = 2;
+  }
+
+  // two attempts fail, but only the first has another attempt behind it
+  const retries = events.filter((e) => e.type === "retry");
+  assert.equal(retries.length, 1);
+  assert.equal(retries[0]?.attempt, 1);
+});
+
+test("the status line names the failure and when the next try lands", () => {
+  const line = formatToolStatusMessage(
+    [{ type: "retry", attempt: 1, status: 503, delayMs: 2000 }],
+    false
+  );
+  assert.match(line, /Provider failed \(503\), trying again in 2s/);
+});
+
+test("a connection failure reads as unreachable rather than an error code", () => {
+  const line = formatToolStatusMessage(
+    [{ type: "retry", attempt: 2, delayMs: 4000 }],
+    false
+  );
+  assert.match(line, /Provider unreachable, trying again in 4s/);
+});
+
+test("the retry line replaces the tail while tool calls stay visible", () => {
+  const line = formatToolStatusMessage(
+    [
+      {
+        type: "tool",
+        stepNumber: 0,
+        toolName: "web_search",
+        args: {},
+        output: {},
+      },
+      { type: "retry", attempt: 1, status: 429, delayMs: 500 },
+    ],
+    false
+  );
+  assert.match(line, /Searching the web/);
+  assert.match(line, /╰ .*Provider failed \(429\), trying again in 500ms/);
+});
+
+test("a retry the turn has moved past stops being shown", () => {
+  const line = formatToolStatusMessage(
+    [
+      { type: "retry", attempt: 1, status: 503, delayMs: 2000 },
+      {
+        type: "tool",
+        stepNumber: 0,
+        toolName: "web_search",
+        args: {},
+        output: {},
+      },
+    ],
+    false
+  );
+  assert.doesNotMatch(line, /trying again/);
+});
+
+test("retries never count as tool calls in the done summary", () => {
+  const line = formatToolStatusMessage(
+    [{ type: "retry", attempt: 1, status: 503, delayMs: 2000 }],
+    true
+  );
+  assert.match(line, /Used 0 tools/);
 });
 
 test("LLM_MAX_RETRIES of 0 disables retries", async () => {

@@ -518,7 +518,8 @@ export async function handleConversationTurn(
   return {
     messages,
     text: result.text,
-    usedTools: toolEvents.length > 0,
+    // retry and narration events share this stream but aren't tool calls
+    usedTools: toolEvents.some((event) => event.type === "tool"),
     historyLength: history.length + 2,
   };
 }
