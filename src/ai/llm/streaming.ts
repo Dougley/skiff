@@ -17,7 +17,6 @@ import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { fetchUserFacts } from "../memory/user-facts.js";
 import type { DiscordToolContext, TurnAttachment } from "../tools/discord.js";
-import { createSourcesTools, type SourceRef } from "../tools/sources.js";
 import { createToolSet } from "../tools/toolset.js";
 import { llmProvider } from "./provider.js";
 import { reasoningProviderOptions, thinkingBudgetTokens } from "./reasoning.js";
@@ -231,8 +230,6 @@ export interface ChatResult {
   finishReason: string;
   /** Number of LLM steps taken (1 = no tool calls, >1 = tool round-trips). */
   stepCount: number;
-  /** Sources recorded via cite_sources during this turn. */
-  sources: SourceRef[];
   /** Files produced by tools this turn (e.g. screenshots), to attach to the reply. */
   attachments: TurnAttachment[];
 }
@@ -329,20 +326,16 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
   // inject them into the toolset and clean up processes after the turn
   const pendingSkillTools: Record<string, unknown> = {};
   const openSkillClients: MCPClient[] = [];
-  const collectedSources: SourceRef[] = [];
   // fresh sink each turn so tool-produced files land on this turn's reply
   const collectedAttachments: TurnAttachment[] = [];
   toolContext.attachments = collectedAttachments;
   let tools =
     ctx.toolSet ??
-    ({
-      ...(await createToolSet(
-        toolContext,
-        pendingSkillTools,
-        openSkillClients
-      )),
-      ...createSourcesTools(collectedSources),
-    } as ToolSet);
+    ((await createToolSet(
+      toolContext,
+      pendingSkillTools,
+      openSkillClients
+    )) as ToolSet);
 
   const model = ctx.model ?? llmProvider;
   // the prompt tells the model what it's running as, so it has to name the
@@ -695,8 +688,8 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
       }
 
       // Intermediate text is live narration, not part of the clean final
-      // answer. Retain the latest fragment only as a fallback for tool-only
-      // terminal steps (for example cite_sources with no follow-up text).
+      // answer. Retain the latest fragment only as a fallback for a terminal
+      // step that calls tools and then adds no text of its own.
       if (result.text) finalText = result.text;
 
       // inject any MCP tools loaded by activate_skill during this step.
@@ -798,7 +791,6 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
     lastInputTokens,
     finishReason: finalFinishReason,
     stepCount: stepCounter,
-    sources: collectedSources,
     attachments: collectedAttachments,
   };
 }

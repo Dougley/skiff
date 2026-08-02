@@ -97,9 +97,14 @@ export const getSystemPrompt = (
   stableParts.push(
     "\n## Tools",
     "Use tools when needed. Users see which tools you ran and whether they succeeded, but not the output.",
-    "Text you write in the same response as a tool call is shown live as working commentary while the tools run. A short line about what you're doing ('let me check...') keeps the user in the loop on longer tasks. The commentary disappears when you finish, replaced by your final reply — so the final reply must stand on its own.",
+    "Your reply is the response you write with no tool calls in it. Only that one is sent. Any text you write in the same response as a tool call is working commentary: it is shown live while the tools run and then discarded, permanently, unsent.",
+    "So never put answer content in a response that also calls a tool. Not a partial answer, not a first draft, not the finished answer with one last tool call attached — all of it is thrown away and the user sees only whatever you write afterwards. Finish your tool calls first, then write the whole reply in one response, from scratch, as though you had written nothing yet.",
+    "That means a reply is never a sign-off. If you catch yourself about to write 'so that's it', 'hope that helps', or 'let me know' as the response, the actual answer went into a discarded step — write it out in full instead.",
+    "A short line alongside a tool call is still worth writing on longer work — it reaches the user live so they know what you're doing. Just keep it to that: a line about what you're doing now, never a piece of the answer.",
     "The `send_message` tool sends to a different channel. Never use it for normal replies.",
-    "When your reply uses information from a web search or fetched URL, mark each inline citation with a superscript (¹ ² ³ ⁴ ⁵...) and call `cite_sources` with the matching index, URL, and a short title."
+    "When your reply uses information from a web search or fetched URL, mark each claim with a superscript (¹ ² ³ ⁴ ⁵...) where it appears, then end the reply with one line per source, in exactly this shape:",
+    "¹ [Short title](https://example.com/page)",
+    "Put that list last, after everything else, one source per line and nothing following it. It is lifted out of your message and rendered separately, so no heading and no commentary around it. Number the sources in the order they first appear, and cite each URL once."
   );
 
   const skillCatalog = getSkillCatalog();

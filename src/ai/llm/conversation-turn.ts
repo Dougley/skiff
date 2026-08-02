@@ -34,7 +34,7 @@ import { compactConversation, shouldCompact } from "../memory/compaction.js";
 import { enqueueEmbedding } from "../memory/embeddings.js";
 import { enqueueMemoryExtraction } from "../memory/extract.js";
 import type { DiscordToolContext } from "../tools/discord.js";
-import { formatSourceRef } from "../tools/sources.js";
+import { extractSources, formatSourceRef } from "./citations.js";
 import { resolveModel } from "./models.js";
 import { getLLMProvider } from "./provider.js";
 import {
@@ -214,10 +214,6 @@ export async function handleConversationTurn(
   const toolEvents: ToolActivityEvent[] = [];
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-  // cite_sources is an internal tool — keep it out of every user-facing view
-  const isVisibleEvent = (e: ToolActivityEvent) =>
-    e.type !== "tool" || e.toolName !== "cite_sources";
-
   // Show an immediate "thinking" indicator so the user knows we're working
   // (skipped for slash commands where the deferred reply already shows a loading state)
   if (!skipInitialStatus) {
@@ -229,9 +225,7 @@ export async function handleConversationTurn(
     if (!onToolStatus) return;
     if (debounceTimer) clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      onToolStatus(
-        formatToolStatusMessage(toolEvents.filter(isVisibleEvent), false)
-      );
+      onToolStatus(formatToolStatusMessage(toolEvents, false));
     }, DEBOUNCE_MS);
   };
 
@@ -342,6 +336,12 @@ export async function handleConversationTurn(
   // Cancel any pending debounce so it doesn't fire after we send the response
   if (debounceTimer) clearTimeout(debounceTimer);
 
+  // The model writes its citations as a trailing markdown list. Lift them out
+  // once, here: everything downstream of this point — the Discord render, the
+  // embedding, fact extraction — wants the answer without its bibliography.
+  // The messages persisted below keep the model's text verbatim.
+  const { body, sources } = extractSources(result.text);
+
   // persist all response messages (assistant tool-calls + tool results + final text)
   let assistantMsg: Awaited<ReturnType<typeof insertMessage>> | undefined;
 
@@ -401,12 +401,12 @@ export async function handleConversationTurn(
       channelId,
       userId,
       guildId,
-      content: result.text,
+      content: body,
     });
 
     void enqueueMemoryExtraction({
       userText: content,
-      assistantText: result.text,
+      assistantText: body,
       userId,
       guildId,
       channelId,
@@ -416,24 +416,23 @@ export async function handleConversationTurn(
   }
 
   // build response components & split into message-sized chunks
-  const { text: latexText, files: latexFiles } = await renderLatex(result.text);
+  const { text: latexText, files: latexFiles } = await renderLatex(body);
   const components = markdownToDiscordComponents(latexText);
   const messages = splitComponentMessagesWithFiles(components, latexFiles);
 
   // Build footer (tool summary + sources + context warning) and append to messages.
   // Footer components are run through splitComponentMessages to respect Discord limits,
   // then merged into the last content chunk if they fit, or sent as a trailing chunk.
-  const visibleToolEvents = toolEvents.filter(isVisibleEvent);
-  const hasToolCalls = visibleToolEvents.some((e) => e.type === "tool");
+  const hasToolCalls = toolEvents.some((e) => e.type === "tool");
   const contextWarning = formatContextUsage(result.lastInputTokens);
-  if (hasToolCalls || result.sources.length > 0 || contextWarning) {
+  if (hasToolCalls || sources.length > 0 || contextWarning) {
     const footerParts: string[] = [];
     if (hasToolCalls) {
-      footerParts.push(formatToolStatusMessage(visibleToolEvents, true));
+      footerParts.push(formatToolStatusMessage(toolEvents, true));
     }
-    if (result.sources.length > 0) {
+    if (sources.length > 0) {
       footerParts.push(`\n-# ${EMOJI.internet} Sources:\n`);
-      footerParts.push(result.sources.map(formatSourceRef).join("\n"));
+      footerParts.push(sources.map(formatSourceRef).join("\n"));
     }
     if (contextWarning) {
       footerParts.push(contextWarning);
@@ -517,7 +516,7 @@ export async function handleConversationTurn(
 
   return {
     messages,
-    text: result.text,
+    text: body,
     // retry and narration events share this stream but aren't tool calls
     usedTools: toolEvents.some((event) => event.type === "tool"),
     historyLength: history.length + 2,
