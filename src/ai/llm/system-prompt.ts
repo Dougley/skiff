@@ -23,9 +23,12 @@ type SystemPromptOptions = {
  * The system prompt is split into two contiguous spans:
  *
  *   stable   — persona, platform rules, durable addenda, tool/skill instructions.
- *              identical across users/channels and stable for the lifetime of the
- *              process (modulo addenda updates from the sleep cycle). marked with
- *              an anthropic ephemeral cache breakpoint at the call site.
+ *              stable over time, but NOT shared process-wide: `getPersona` and
+ *              `getActiveAddenda` are both scoped by guild/channel below, so a
+ *              channel with a `set_persona_part` override or its own addenda
+ *              gets its own cache entry. Identical across users within a scope.
+ *              Marked with an anthropic ephemeral cache breakpoint at the call
+ *              site.
  *
  *   variable — chat context, active model, rolling summary. scoped to the
  *              channel rather than the turn, so it holds still for the length

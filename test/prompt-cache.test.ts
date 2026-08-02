@@ -3,6 +3,7 @@ import test from "node:test";
 import type { LanguageModelV3GenerateResult } from "@ai-sdk/provider";
 import { MockLanguageModelV3 } from "ai/test";
 import type { Client } from "discord.js";
+import { z } from "zod";
 
 process.env.DISCORD_BOT_TOKEN = `${Buffer.from("123456789012345678").toString("base64")}.test.signature`;
 process.env.OPENAI_API_KEY = "test";
@@ -78,6 +79,22 @@ function cacheBreakpointIndex(prompt: PromptMessage[]): number {
     if (hasCacheControl(prompt[i])) return i;
   }
   return -1;
+}
+
+/**
+ * Every breakpoint the provider sees for one call: system blocks, messages,
+ * and tool definitions alike all draw from the same budget of 4.
+ */
+function totalBreakpoints(generateCall: unknown): number {
+  const call = generateCall as {
+    prompt: PromptMessage[];
+    tools?: Array<{ providerOptions?: Record<string, unknown> }>;
+  };
+  const inPrompt = call.prompt.filter(hasCacheControl).length;
+  const inTools = (call.tools ?? []).filter((t) =>
+    hasCacheControl(t as PromptMessage)
+  ).length;
+  return inPrompt + inTools;
 }
 
 /**
@@ -188,6 +205,110 @@ test("the next turn's prefix still matches what the last turn cached", async () 
 test("a first message with no history gets no message breakpoint", async () => {
   const prompt = await promptFor([current("hello")]);
   assert.equal(cacheBreakpointIndex(prompt), -1);
+});
+
+test("a multi-step turn caches its own accumulated tail", async () => {
+  // step 1 calls a tool, step 2 answers — so step 2 replays step 1's
+  // assistant + tool messages and should read them from cache instead of
+  // re-billing them
+  let call = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      call++;
+      if (call === 1) {
+        return {
+          content: [
+            {
+              type: "tool-call" as const,
+              toolCallId: "c1",
+              toolName: "ping",
+              input: "{}",
+            },
+          ],
+          finishReason: { unified: "tool-calls" as const, raw: "tool_use" },
+          usage,
+          warnings: [],
+        } as LanguageModelV3GenerateResult;
+      }
+      return reply("done");
+    },
+  });
+
+  await chat({
+    model,
+    messages: [...HISTORY, current("third question")],
+    toolSet: {
+      ping: {
+        description: "ping",
+        inputSchema: z.object({}),
+        execute: async () => "pong",
+      },
+    } as unknown as Parameters<typeof chat>[0]["toolSet"],
+    toolContext,
+  });
+
+  const first = model.doGenerateCalls[0]?.prompt as unknown as PromptMessage[];
+  const second = model.doGenerateCalls[1]?.prompt as unknown as PromptMessage[];
+
+  // conversation breakpoints only — the stable system block carries its own
+  const marked = (p: PromptMessage[]) =>
+    p
+      .map((m, i) => (m.role !== "system" && hasCacheControl(m) ? i : -1))
+      .filter((i) => i !== -1);
+
+  // step 1 has produced nothing of its own yet: history breakpoint only
+  assert.deepEqual(marked(first), [first.length - 2]);
+
+  // step 2 adds one on the newest message — the tool result it just appended
+  assert.deepEqual(marked(second), [first.length - 2, second.length - 1]);
+  assert.ok(
+    second.length > first.length,
+    "step 2 must actually carry the step-1 messages"
+  );
+
+  // Anthropic honours 4 breakpoints and silently ignores the rest, so this is
+  // the worst case: stable system + history + tail + last tool. A fifth would
+  // be dropped by the provider with only a warning to show for it.
+  assert.equal(
+    totalBreakpoints(model.doGenerateCalls[1]),
+    4,
+    "a multi-step turn with tools sits exactly on Anthropic's breakpoint budget"
+  );
+});
+
+test("a length continuation stays inside the breakpoint budget", async () => {
+  // finishReason 'length' drives generateTextOnly, which appends a hidden
+  // continuation prompt to the message list on every pass
+  let call = 0;
+  const model = new MockLanguageModelV3({
+    doGenerate: async () => {
+      call++;
+      return {
+        content: [{ type: "text" as const, text: `part ${call} ` }],
+        finishReason:
+          call < 3
+            ? { unified: "length" as const, raw: "max_tokens" }
+            : { unified: "stop" as const, raw: "stop" },
+        usage,
+        warnings: [],
+      } as LanguageModelV3GenerateResult;
+    },
+  });
+
+  await chat({
+    model,
+    messages: [...HISTORY, current("third question")],
+    toolSet: {},
+    toolContext,
+  });
+
+  assert.ok(model.doGenerateCalls.length > 1, "a continuation must have run");
+  for (const [i, generateCall] of model.doGenerateCalls.entries()) {
+    assert.ok(
+      totalBreakpoints(generateCall) <= 4,
+      `continuation call ${i} exceeded the breakpoint budget`
+    );
+  }
 });
 
 test("images survive the turn-context prepend", async () => {

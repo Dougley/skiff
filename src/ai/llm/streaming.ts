@@ -6,6 +6,7 @@ import type {
 } from "@ai-sdk/provider-utils";
 import {
   APICallError,
+  type CallWarning,
   generateText,
   type LanguageModel,
   type LanguageModelUsage,
@@ -64,35 +65,44 @@ function markLastToolForCaching<T extends Record<string, unknown>>(
 }
 
 /**
- * Caches the conversation history up to (and including) `index`.
+ * Caches the conversation up to (and including) each index in `indices`.
  *
- * The breakpoint belongs on the last message that came out of the database,
- * NOT on the newest one. Only persisted history replays byte-identically next
- * turn; the current message carries a sender block and this turn's retrieved
- * context, neither of which is stored, so replaying it from the database
- * yields different text. A breakpoint on it would cache a prefix that can
- * never match again — and because a cache read only lands at a breakpoint,
- * one mismatched message costs the whole history, every turn.
+ * Two breakpoints are in play:
  *
- * A negative index (a turn with no history yet) simply adds no breakpoint.
+ *   history — the last message that came out of the database, NOT the newest
+ *             one. Only persisted history replays byte-identically next turn;
+ *             the current message carries a sender block and this turn's
+ *             retrieved context, neither of which is stored, so replaying it
+ *             from the database yields different text. A breakpoint on it
+ *             would cache a prefix that can never match again — and because a
+ *             cache read only lands at a breakpoint, one mismatched message
+ *             costs the whole history, every turn.
+ *
+ *   tail    — the newest message of a multi-step turn. Steps 2..N of a turn
+ *             replay this turn's own assistant/tool messages verbatim, so
+ *             without a breakpoint that tail is re-billed in full on every
+ *             step. It is worthless to the next turn (it sits behind the
+ *             per-turn context) but pays for itself inside this one.
+ *
+ * Negative or out-of-range indices are skipped, so a turn with no history and
+ * a turn with no steps yet simply get fewer breakpoints.
  */
-function tagMessageForCaching(
+function tagMessagesForCaching(
   messages: ModelMessage[],
-  index: number
+  indices: number[]
 ): ModelMessage[] {
-  const target = index >= 0 ? messages[index] : undefined;
-  if (!target) return messages;
-  const existing =
-    (target as { providerOptions?: Record<string, unknown> }).providerOptions ??
-    {};
-  return [
-    ...messages.slice(0, index),
-    {
-      ...target,
+  const targets = new Set(indices.filter((i) => i >= 0 && i < messages.length));
+  if (targets.size === 0) return messages;
+  return messages.map((message, i) => {
+    if (!targets.has(i)) return message;
+    const existing =
+      (message as { providerOptions?: Record<string, unknown> })
+        .providerOptions ?? {};
+    return {
+      ...message,
       providerOptions: { ...existing, ...ANTHROPIC_CACHE_CONTROL },
-    } as ModelMessage,
-    ...messages.slice(index + 1),
-  ];
+    } as ModelMessage;
+  });
 }
 
 /**
@@ -405,6 +415,20 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
     messages,
     buildTurnContext({ userFacts, logbookContext: ctx.logbookContext })
   );
+  // Where this turn's own messages start. Anything at or past it was produced
+  // by the steps below, not replayed from the database.
+  const turnStartLength = withTurnContext.length;
+
+  /**
+   * Anthropic honours at most 4 cache breakpoints and silently ignores the
+   * rest (surfaced as a provider warning, which is why warnings are logged
+   * below). The budget is spent on: the stable system block, the history,
+   * this turn's accumulated tail, and the last tool definition.
+   */
+  const cacheBreakpoints = (msgs: ModelMessage[]): number[] =>
+    msgs.length > turnStartLength
+      ? [historyBreakpointIndex, msgs.length - 1]
+      : [historyBreakpointIndex];
 
   // manual agentic loop — lets us inject skill MCP tools between steps
   let currentMessages = withTurnContext;
@@ -432,20 +456,32 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
   const recordResult = (result: {
     response: { messages: unknown };
     steps: Array<{ usage: LanguageModelUsage }>;
+    warnings?: CallWarning[];
   }): void => {
     const newMessages = result.response.messages as ChatResponseMessage[];
     allResponseMessages.push(...newMessages);
     currentMessages = [...currentMessages, ...newMessages];
 
+    // The caching design depends on breakpoints actually landing, and the
+    // provider reports an over-budget breakpoint as a warning rather than an
+    // error. Dropping warnings silently would hide exactly that.
+    if (result.warnings?.length) {
+      logger.warn("chat: provider warnings", { warnings: result.warnings });
+    }
+
     for (const step of result.steps) {
       const stepCacheRead = step.usage.inputTokenDetails?.cacheReadTokens;
       const stepCacheWrite = step.usage.inputTokenDetails?.cacheWriteTokens;
+      const stepNoCache = step.usage.inputTokenDetails?.noCacheTokens;
       totalUsage = {
         ...totalUsage,
         inputTokens:
           (totalUsage.inputTokens ?? 0) + (step.usage.inputTokens ?? 0),
         inputTokenDetails: {
           ...totalUsage.inputTokenDetails,
+          noCacheTokens:
+            (totalUsage.inputTokenDetails?.noCacheTokens ?? 0) +
+            (stepNoCache ?? 0),
           cacheReadTokens:
             (totalUsage.inputTokenDetails?.cacheReadTokens ?? 0) +
             (stepCacheRead ?? 0),
@@ -467,7 +503,10 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
       model,
       messages: [
         ...systemMessages,
-        ...tagMessageForCaching(messagesForCall, historyBreakpointIndex),
+        ...tagMessagesForCaching(
+          messagesForCall,
+          cacheBreakpoints(messagesForCall)
+        ),
       ],
       maxOutputTokens: maxOutputTokens(),
       maxRetries: llmMaxRetries(),
@@ -554,7 +593,10 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
         model,
         messages: [
           ...systemMessages,
-          ...tagMessageForCaching(currentMessages, historyBreakpointIndex),
+          ...tagMessagesForCaching(
+            currentMessages,
+            cacheBreakpoints(currentMessages)
+          ),
         ],
         tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
@@ -729,6 +771,25 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
     finishReason: finalFinishReason,
     usage: totalUsage,
   });
+
+  // Cache effectiveness is the one thing about this loop that can't be
+  // reasoned out from the code — a breakpoint that stops matching produces no
+  // error, just a quietly larger bill. Logged at info so it shows up without
+  // debug logging enabled. Providers that report no cache detail (openai,
+  // ollama) leave every field at 0 and are skipped.
+  const cacheRead = totalUsage.inputTokenDetails?.cacheReadTokens ?? 0;
+  const cacheWrite = totalUsage.inputTokenDetails?.cacheWriteTokens ?? 0;
+  const noCache = totalUsage.inputTokenDetails?.noCacheTokens ?? 0;
+  if (cacheRead + cacheWrite > 0) {
+    const billable = cacheRead + cacheWrite + noCache;
+    logger.info("chat: prompt cache", {
+      steps: stepCounter,
+      cacheRead,
+      cacheWrite,
+      noCache,
+      hitRate: billable > 0 ? Math.round((cacheRead / billable) * 100) : 0,
+    });
+  }
 
   return {
     text: finalText,
