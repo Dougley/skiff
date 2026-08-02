@@ -149,20 +149,7 @@ function formatTokenCount(tokens: number): string {
 }
 
 function formatEventLine(event: ToolEvent): string {
-  // Show custom status text for update_status tool calls
-  if (event.toolName === "update_status" && isStatusOutput(event.output)) {
-    return `${EMOJI.robot} ${event.output.status}`;
-  }
   return `${toolEmoji(event.toolName)} ${formatToolStatusLine(event.toolName)}`;
-}
-
-function isStatusOutput(output: unknown): output is { status: string } {
-  return (
-    typeof output === "object" &&
-    output !== null &&
-    "status" in output &&
-    typeof (output as { status: unknown }).status === "string"
-  );
 }
 
 // collapse the live tree view after this many events to keep the status compact
@@ -224,10 +211,7 @@ export function formatToolStatusMessage(
   events: ToolActivityEvent[],
   done: boolean
 ): string {
-  // update_status is treated specially: excluded from the tree, used as the tail line
-  const toolEvents = events.filter(
-    (e): e is ToolEvent => isToolEvent(e) && e.toolName !== "update_status"
-  );
+  const toolEvents = events.filter(isToolEvent);
   const narrations = events.filter(isTextEvent);
 
   // reasoning models think between every tool call, so per-step lines would
@@ -242,18 +226,12 @@ export function formatToolStatusMessage(
       ? ` · ${EMOJI.brain} ${approx}${formatTokenCount(reasoningTotal)} thinking tokens`
       : "";
 
-  // latest update_status text becomes the tail instead of a random loading line
-  const lastStatus = events
-    .filter(isToolEvent)
-    .filter((e) => e.toolName === "update_status" && isStatusOutput(e.output))
-    .at(-1);
-  // a pending retry outranks both: it's the reason nothing is happening
+  // a pending retry outranks the loading line: it's the reason nothing is
+  // happening. Narration itself renders above, on its own line.
   const retry = pendingRetry(events);
   const tailLine = retry
     ? `-# ╰ ${EMOJI.loading} ${formatRetryLine(retry)}${thinkingSuffix}`
-    : lastStatus && isStatusOutput(lastStatus.output)
-      ? `-# ╰ ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
-      : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
+    : `-# ╰ ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
 
   if (done) {
     // collapsed single-line summary for completed turns — narration is
@@ -276,9 +254,7 @@ export function formatToolStatusMessage(
   if (toolEvents.length === 0) {
     const bare = retry
       ? `-# ${EMOJI.loading} ${formatRetryLine(retry)}${thinkingSuffix}`
-      : lastStatus && isStatusOutput(lastStatus.output)
-        ? `-# ${EMOJI.robot} ${lastStatus.output.status}${thinkingSuffix}`
-        : `-# ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
+      : `-# ${EMOJI.loading} ${randomLoadingLine()}${thinkingSuffix}`;
     return [...narrationLines, bare].join("\n");
   }
 

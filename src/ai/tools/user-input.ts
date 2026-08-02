@@ -86,27 +86,6 @@ export const createUserInputTools = (ctx: DiscordToolContext) => ({
       return { responses: results };
     },
   }),
-
-  update_status: tool({
-    description:
-      "Send a brief status update to the user about what you're currently doing. " +
-      "The message appears in the tool activity display. " +
-      "Use this during long-running operations so the user knows you're still working.",
-    inputSchema: z.object({
-      status: z
-        .string()
-        .min(1)
-        .max(200)
-        .describe("The status message to show to the user."),
-    }),
-    execute: async ({ status }) => {
-      // The actual display is handled by tool-status.ts which reads the
-      // tool output from the ToolActivityEvent. This is intentionally a
-      // passthrough — the status text flows through onStepFinish → onToolActivity
-      // → formatToolStatusMessage which renders it in the tree.
-      return { status };
-    },
-  }),
 });
 
 // helpers
