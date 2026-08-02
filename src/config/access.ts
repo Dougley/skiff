@@ -24,6 +24,10 @@ export interface AccessConfig {
   toolGuildRules: Map<string, Set<ToolGroup>>;
   toolDmRules: Set<ToolGroup>;
   toolUserRules: Map<string, Set<ToolGroup>>;
+  /** Groups from DISABLED_TOOLS — off everywhere, including autonomous turns. */
+  disabledToolGroups: Set<ToolGroup>;
+  /** Individual tool names from DISABLED_TOOLS. */
+  disabledToolNames: Set<string>;
 }
 
 export interface AccessContext {
@@ -105,7 +109,30 @@ function parseToolGroupList(value: string): Set<ToolGroup> {
   );
 }
 
+/**
+ * Split DISABLED_TOOLS into the groups it names and the individual tools it
+ * names. Anything that isn't a known group is taken as a tool name — which is
+ * also what makes a mistyped group inert rather than an error, the same way
+ * the scoped TOOL_*_RULES already behave.
+ */
+function parseDisabledTools(value: string): {
+  groups: Set<ToolGroup>;
+  names: Set<string>;
+} {
+  const groups = new Set<ToolGroup>();
+  const names = new Set<string>();
+  for (const entry of parseCommaSeparated(value)) {
+    if (VALID_TOOL_GROUPS.has(entry as ToolGroup)) {
+      groups.add(entry as ToolGroup);
+    } else {
+      names.add(entry);
+    }
+  }
+  return { groups, names };
+}
+
 export function parseAccessConfig(env: EnvironmentVariables): AccessConfig {
+  const disabledTools = parseDisabledTools(env.DISABLED_TOOLS);
   return {
     policy: env.ACCESS_POLICY,
     dmPolicy: env.ACCESS_DM_POLICY,
@@ -116,7 +143,14 @@ export function parseAccessConfig(env: EnvironmentVariables): AccessConfig {
     toolGuildRules: parseToolRules(env.TOOL_GUILD_RULES),
     toolDmRules: parseToolGroupList(env.TOOL_DM_RULES),
     toolUserRules: parseToolRules(env.TOOL_USER_RULES),
+    disabledToolGroups: disabledTools.groups,
+    disabledToolNames: disabledTools.names,
   };
+}
+
+/** Tool names that must never appear in a tool set, whatever the scope. */
+export function getDisabledToolNames(config: AccessConfig): Set<string> {
+  return config.disabledToolNames;
 }
 
 let cachedConfig: AccessConfig | null = null;
@@ -196,7 +230,9 @@ export function getDisabledToolGroups(
   ctx: ToolContext,
   config: AccessConfig
 ): Set<ToolGroup> {
-  const disabled = new Set<ToolGroup>();
+  // global first: DISABLED_TOOLS applies to every turn, autonomous ones
+  // included, where the scoped rules below can have nothing to match on
+  const disabled = new Set<ToolGroup>(config.disabledToolGroups);
 
   // DM-wide rules
   if (ctx.isDM) {

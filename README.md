@@ -144,6 +144,7 @@ Control where and for whom the bot operates. Default is `open` (no restrictions)
 | `ACCESS_ALLOWED_GUILDS` | -- | Comma-separated guild IDs (only when policy is `allowlist`) |
 | `ACCESS_ALLOWED_CHANNELS` | -- | Comma-separated channel IDs (only when policy is `allowlist`) |
 | `ACCESS_ALLOWED_USERS` | -- | Comma-separated user IDs (applies to both guild and DM allowlists) |
+| `DISABLED_TOOLS` | -- | Tool groups or individual built-in tools turned off everywhere (see below) |
 | `TOOL_CHANNEL_RULES` | -- | Per-channel tool restrictions (see below) |
 | `TOOL_GUILD_RULES` | -- | Per-guild tool restrictions (see below) |
 | `TOOL_DM_RULES` | -- | Tool groups disabled in all DMs (see below) |
@@ -159,6 +160,7 @@ When `ACCESS_POLICY` is `allowlist`, each level is checked independently — if 
 | `TOOL_CHANNEL_RULES` | `channelId:group1,group2;...` | Per-channel overrides |
 | `TOOL_USER_RULES` | `userId:group1,group2;...` | Per-user restrictions |
 | `TOOL_DM_RULES` | `group1,group2,...` | All DMs (no ID prefix) |
+| `DISABLED_TOOLS` | `group1,tool_name,...` | Everywhere, including autonomous turns |
 
 ```sh
 # Disable shell guild-wide, additionally disable web in one channel
@@ -175,6 +177,18 @@ TOOL_USER_RULES=222222222222222222:scheduler
 Available tool groups: `discord`, `persona`, `memory`, `topic`, `logbook`, `web`, `scheduler`, `heartbeat`, `shell`, `mcp`, `user-input`, `skills`.
 
 The `web` group controls `web_search`, `fetch_url`, and `browser_cdp` together.
+
+**Replacing a built-in tool.** `DISABLED_TOOLS` is the only rule that takes individual tool names, which is what you want when an MCP server does one job better than the built-in — the group vars would take out its neighbours too:
+
+```sh
+# drop Brave search, keep page fetching and the browser
+DISABLED_TOOLS=web_search
+
+# turn off a whole group everywhere, without listing every guild
+DISABLED_TOOLS=shell,heartbeat
+```
+
+It names **built-in** tools. An MCP tool normally has to yield to a built-in of the same name and gets exposed as `mcp_<name>` instead; disabling the built-in frees the name, so the replacement is offered under it directly and the model sees one tool rather than two. MCP tools themselves are governed by `mcp.json` and the `mcp` group. A name that matches no built-in does nothing.
 
 ### Shell
 

@@ -1,5 +1,9 @@
 import type { MCPClient } from "@ai-sdk/mcp";
-import { getAccessConfig, getDisabledToolGroups } from "../../config/access.js";
+import {
+  getAccessConfig,
+  getDisabledToolGroups,
+  getDisabledToolNames,
+} from "../../config/access.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../config/logger.js";
 import { createDiscordTools, type DiscordToolContext } from "./discord.js";
@@ -35,7 +39,9 @@ export async function createToolSet(
     getAccessConfig()
   );
 
-  const builtins: Record<string, unknown> = {
+  const disabledNames = getDisabledToolNames(getAccessConfig());
+
+  const allBuiltins: Record<string, unknown> = {
     ...(!disabled.has("discord") ? createDiscordTools(ctx) : {}),
     ...(!disabled.has("persona") ? createPersonaTools(ctx) : {}),
     ...(!disabled.has("memory") ? createMemoryTools(ctx) : {}),
@@ -50,6 +56,16 @@ export async function createToolSet(
       ? createSkillTools(pendingSkillTools, openClients)
       : {}),
   };
+
+  // DISABLED_TOOLS names built-ins only, and dropping them BEFORE the MCP
+  // merge is the point rather than a detail: a disabled built-in frees its
+  // name, so a replacement MCP tool can claim it outright instead of landing
+  // under the mcp_ prefix below. Do not fold this into a filter after the
+  // merge — that would block the replacement along with the original.
+  // (MCP tools are governed by mcp.json and the `mcp` group.)
+  const builtins = Object.fromEntries(
+    Object.entries(allBuiltins).filter(([name]) => !disabledNames.has(name))
+  );
 
   if (disabled.has("mcp")) return builtins;
 

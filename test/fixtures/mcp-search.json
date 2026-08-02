@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "search": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["test/fixtures/mcp-search-server.mjs"]
+    }
+  }
+}

@@ -107,6 +107,9 @@ export const environmentVariableSchema = z.object({
   ACCESS_ALLOWED_USERS: z.string().default(""),
   CLOUDFLARE_ACCOUNT_ID: z.string().optional(),
   CLOUDFLARE_API_TOKEN: z.string().optional(),
+  // Tool groups or individual tool names never exposed anywhere. Use this to
+  // drop a built-in you've replaced (e.g. web_search for an MCP search tool).
+  DISABLED_TOOLS: z.string().default(""),
   TOOL_CHANNEL_RULES: z.string().default(""),
   TOOL_GUILD_RULES: z.string().default(""),
   TOOL_DM_RULES: z.string().default(""),
