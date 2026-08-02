@@ -163,12 +163,50 @@ export async function getMCPServers(configPath?: string) {
   return clients;
 }
 
-export async function createToolset() {
-  const mcpClients = await mcpConfig;
-  const toolSets = await Promise.all(
-    mcpClients.map((client) => client.tools())
+type ToolMap = Record<string, unknown>;
+
+// The merged tool map, reused until it goes stale.
+//
+// `createToolset` runs once per reply, so an uncached build puts a listTools
+// round-trip per server on the critical path of every single message — for
+// HTTP and SSE servers, a network hop the user waits on. Tool definitions
+// almost never change while a server is running, so this trades freshness for
+// latency on a TTL. The AI SDK's MCPClient exposes no
+// notifications/tools/list_changed hook to invalidate on, hence the timer.
+let cachedTools: ToolMap | null = null;
+let cachedAt = 0;
+// Collapses concurrent refreshes: several Discord messages can land at once,
+// and they should share one fetch rather than race to the same servers.
+let inFlightRefresh: Promise<ToolMap> | null = null;
+// Last successful listing per client. A server that blips mid-session would
+// otherwise silently shrink the tool set — which is not just missing
+// capability but a changed tool array, and that invalidates the entire
+// Anthropic prompt-cache prefix until it comes back.
+const lastGoodPerClient = new WeakMap<MCPClient, ToolMap>();
+
+async function listToolsPerClient(clients: MCPClient[]): Promise<ToolMap[]> {
+  return Promise.all(
+    clients.map(async (client) => {
+      try {
+        const set = (await client.tools()) as ToolMap;
+        lastGoodPerClient.set(client, set);
+        return set;
+      } catch (err) {
+        const stale = lastGoodPerClient.get(client);
+        logger.warn(
+          stale
+            ? "MCP tool listing failed — reusing the last known tools for this server"
+            : "MCP tool listing failed — continuing without this server's tools",
+          { err: err instanceof Error ? err.message : String(err) }
+        );
+        return stale ?? {};
+      }
+    })
   );
-  const tools = toolSets.reduce<Record<string, unknown>>((acc, set) => {
+}
+
+function mergeToolSets(toolSets: ToolMap[]): ToolMap {
+  const tools = toolSets.reduce<ToolMap>((acc, set) => {
     for (const [name, tool] of Object.entries(set)) {
       // inter-server collision: first server wins, later ones are dropped
       if (Object.hasOwn(acc, name)) {
@@ -181,7 +219,48 @@ export async function createToolset() {
     }
     return acc;
   }, {});
-  return tools;
+  // Sorted by name, not by arrival. The tool array serializes at position zero
+  // of the Anthropic prompt-cache prefix, so if a server ever returns its
+  // listTools in a different order the whole cached prefix — system prompt and
+  // conversation history included — misses, on every turn, with no error to
+  // show for it. Collision resolution above still runs in server order.
+  return Object.fromEntries(
+    Object.entries(tools).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  );
+}
+
+export async function createToolset(): Promise<ToolMap> {
+  const ttl = env.MCP_TOOLS_CACHE_TTL_MS;
+  if (cachedTools && ttl > 0 && Date.now() - cachedAt < ttl) {
+    return cachedTools;
+  }
+
+  inFlightRefresh ??= (async () => {
+    try {
+      const tools = mergeToolSets(await listToolsPerClient(await mcpConfig));
+      cachedTools = tools;
+      cachedAt = Date.now();
+      return tools;
+    } finally {
+      inFlightRefresh = null;
+    }
+  })();
+
+  // MCP is an optional extension, never a turn dependency. The per-client
+  // handling above already absorbs the realistic failures; this covers the
+  // rest rather than letting a refresh take the whole reply down with it.
+  return inFlightRefresh.catch((err) => {
+    logger.warn("MCP tool refresh failed — serving the previous tool set", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return cachedTools ?? {};
+  });
+}
+
+/** Drops the cached tool map so the next build fetches fresh listings. */
+export function invalidateMCPToolCache(): void {
+  cachedTools = null;
+  cachedAt = 0;
 }
 
 // resolved once at startup; the inner catches make rejection impossible, but
@@ -194,6 +273,8 @@ export const mcpConfig: Promise<MCPClient[]> = getMCPServers().catch((err) => {
 });
 
 export async function closeMCPClients(): Promise<void> {
+  // the cached map holds tools bound to clients that are about to go away
+  invalidateMCPToolCache();
   await Promise.allSettled(
     rootMCPClients.map((c) =>
       c.close().catch((err: unknown) => {

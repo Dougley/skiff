@@ -271,6 +271,7 @@ The Wake connects those events with typed relationships such as `supports`, `dep
 | `LOG_LEVEL` | `info` | `trace`, `debug`, `info`, `warn`, `error`, `fatal` |
 | `NODE_ENV` | `development` | `development`, `production`, or `test` |
 | `MCP_CONFIG_PATH` | `mcp.json` | Path to MCP server config |
+| `MCP_TOOLS_CACHE_TTL_MS` | `300000` | How long MCP tool listings are reused before refetching (`0` to disable) |
 | `PERSONA_FILE` | `./agent.persona.json` | Path to persona file |
 | `GUILD_ID` | -- | Restrict command registration to a single guild (faster for dev) |
 | `CONTEXT_WINDOW_SIZE` | `200000` | Max context window size in tokens |

@@ -51,6 +51,11 @@ export const environmentVariableSchema = z.object({
   RAG_RECENT_LIMIT: z.coerce.number().int().min(1).max(50).default(12),
   RAG_MIN_SIMILARITY: z.coerce.number().min(0).max(1).default(0.3),
   MCP_CONFIG_PATH: z.string().default("mcp.json"),
+  // How long a server's tool listing is reused before it is fetched again.
+  // Tool definitions almost never change mid-session, and the listing sits on
+  // the critical path of every reply, so the default leans on the cache.
+  // 0 disables caching and fetches on every turn.
+  MCP_TOOLS_CACHE_TTL_MS: z.coerce.number().int().min(0).default(300_000),
   PERSONA_FILE: z.string().default("./agent.persona.json"),
   GUILD_ID: z.string().optional(),
   BRAVE_SEARCH_API_KEY: z.string().optional(),

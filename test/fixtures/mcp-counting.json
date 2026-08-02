@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "counting": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["test/fixtures/mcp-counting-server.mjs"]
+    }
+  }
+}
