@@ -8,7 +8,6 @@ import { getSkillCatalog } from "../skills/index.js";
 import type { MessageContext } from "./conversation-turn.js";
 
 type SystemPromptOptions = {
-  userFacts?: string[];
   messageContext?: MessageContext;
   /** Guild ID for scoping durable persona addenda. */
   guildId?: string | null;
@@ -16,8 +15,6 @@ type SystemPromptOptions = {
   channelId?: string | null;
   /** Rolling summary of compacted (no longer visible) conversation history. */
   conversationSummary?: string | null;
-  /** Active Logbook storylines relevant to the current message. */
-  logbookContext?: string[];
   /** Model serving this turn. Defaults to LLM_DEFAULT_MODEL. */
   model?: string;
 };
@@ -30,12 +27,17 @@ type SystemPromptOptions = {
  *              process (modulo addenda updates from the sleep cycle). marked with
  *              an anthropic ephemeral cache breakpoint at the call site.
  *
- *   variable — chat context, current time, per-user facts. changes per turn,
- *              so it must come *after* the cache breakpoint.
+ *   variable — chat context, active model, rolling summary. scoped to the
+ *              channel rather than the turn, so it holds still for the length
+ *              of a conversation. it sits after the stable breakpoint but
+ *              still ahead of the message history.
  *
- * NB: per-user facts MUST stay in `variable`. anthropic's prompt cache is
- * content-hashed; mixing per-user facts into the cached span would let one
- * user's facts leak into another user's cache lookup key.
+ * NB: nothing that changes turn to turn belongs in either span — the history
+ * breakpoint sits behind both, so a single changed character there costs the
+ * entire cached history. Per-turn material goes through {@link buildTurnContext}
+ * and rides on the newest message instead. That also keeps per-user facts out
+ * of every cached span: the cache is content-hashed, and facts in a cached
+ * span would put one user's data in another user's lookup key.
  */
 export interface SystemPromptParts {
   stable: string;
@@ -66,7 +68,7 @@ export const getSystemPrompt = (
 
     "\n## Behavior",
     "Be resourceful before asking. When you can find the answer yourself, do: search memory for past context, search the web or fetch a URL for facts, look up server/user/channel details. Ask the user only when you're blocked on a decision that's genuinely theirs to make.",
-    "Each user message is prefixed with a JSON block identifying the sender (display name, username, id). Use it to know who you're talking to. Never repeat the block back, and address people by name, not raw id.",
+    "The newest user message is prefixed with context for this turn — the current time, any relevant Logbook storylines, what you remember about the speaker — followed by a JSON block identifying the sender (display name, username, id). Use them to know when it is and who you're talking to. Never repeat either block back, and address people by name, not raw id.",
     "Reads are free; effects are not. Searching, fetching, and lookups run freely. Anything outward-facing or hard to undo (posting to another channel, scheduling tasks, shell commands) should match what the user actually asked for. If intent is ambiguous, confirm before acting.",
     "The Logbook tracks ongoing endeavors and their history. Read it freely for continuity. Create or change a storyline only when the user explicitly asks to track something or clearly states a decision, commitment, resolution, risk, milestone, or material state change to an already-tracked endeavor. Never infer commitments from casual discussion.",
     "The Wake connects Logbook events into an evidence-backed explanation of why things happened. Trace it freely. Add links or evidence only when the relationship is explicit or the user confirms it; never manufacture causality.",
@@ -106,8 +108,10 @@ export const getSystemPrompt = (
     );
   }
 
-  // variable tier: anything that changes per turn / per channel / per user.
-  // truncated timestamp keeps the cache-busting churn to ~once a minute.
+  // variable tier: per-channel context that holds still across a conversation.
+  // anything that changes turn to turn belongs in buildTurnContext instead —
+  // this span sits in front of the whole message history, so churn here
+  // invalidates the history cache on every single turn.
   const variableParts: string[] = [];
 
   const ctx = options?.messageContext;
@@ -123,11 +127,8 @@ export const getSystemPrompt = (
     variableParts.push(`\`\`\`json\n${JSON.stringify(chatContext)}\n\`\`\``);
   }
 
-  const now = new Date();
-  now.setSeconds(0, 0);
   variableParts.push(
     `\n## Context`,
-    `Current time: ${now.toISOString()}`,
     `Model: ${options?.model ?? env.LLM_DEFAULT_MODEL}`
   );
 
@@ -139,25 +140,56 @@ export const getSystemPrompt = (
     );
   }
 
-  const logbookContext = options?.logbookContext ?? [];
+  return {
+    stable: stableParts.join("\n"),
+    variable: variableParts.join("\n"),
+  };
+};
+
+export type TurnContextOptions = {
+  /** Facts about whoever is speaking this turn. */
+  userFacts?: string[];
+  /** Storylines retrieved for this turn's message. */
+  logbookContext?: string[];
+  /** Overridable for tests; defaults to now. */
+  now?: Date;
+};
+
+/**
+ * Per-turn context, rendered for the newest message rather than the system
+ * prompt.
+ *
+ * Everything here changes turn to turn: the clock ticks, Logbook retrieval
+ * runs against the current message, and the facts belong to whoever just
+ * spoke. In a system block all of that sits ahead of the message history and
+ * re-invalidates it every turn. Carried on the newest message it lands after
+ * the cache breakpoint, where changing it is free.
+ *
+ * It also keeps per-user facts out of any cached span entirely — the cache is
+ * content-hashed, so one user's facts can never influence another's lookup.
+ */
+export function buildTurnContext(options: TurnContextOptions): string | null {
+  const parts: string[] = [];
+
+  const now = options.now ?? new Date();
+  parts.push("## Current Turn", `Current time: ${now.toISOString()}`);
+
+  const logbookContext = options.logbookContext ?? [];
   if (logbookContext.length > 0) {
-    variableParts.push(
+    parts.push(
       "\n## Relevant Logbook Storylines",
       "These are ongoing endeavors, not generic memories. Use them for continuity when relevant. Do not claim an update occurred unless it appears in the conversation or you record it with a Logbook tool.",
       ...logbookContext.map((storyline) => `- ${storyline}`)
     );
   }
 
-  const userFacts = options?.userFacts ?? [];
+  const userFacts = options.userFacts ?? [];
   if (userFacts.length > 0) {
-    variableParts.push(
+    parts.push(
       "\n## Memory: User Facts",
       ...userFacts.map((fact) => `- ${fact}`)
     );
   }
 
-  return {
-    stable: stableParts.join("\n"),
-    variable: variableParts.join("\n"),
-  };
-};
+  return parts.join("\n");
+}

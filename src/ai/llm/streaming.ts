@@ -25,7 +25,7 @@ import {
   type RetryNotice,
   withRetryReporting,
 } from "./retry.js";
-import { getSystemPrompt } from "./system-prompt.js";
+import { buildTurnContext, getSystemPrompt } from "./system-prompt.js";
 import type { MessageContext } from "./types.js";
 
 // prompt-caching helpers
@@ -63,23 +63,57 @@ function markLastToolForCaching<T extends Record<string, unknown>>(
   } as T;
 }
 
-// caches the conversation history up to (and including) the last message.
-// turn N+1 reuses turns 1..N entirely.
-function tagLastMessageForCaching(messages: ModelMessage[]): ModelMessage[] {
-  if (messages.length === 0) return messages;
-  const lastIdx = messages.length - 1;
-  const last = messages[lastIdx];
-  if (!last) return messages;
+/**
+ * Caches the conversation history up to (and including) `index`.
+ *
+ * The breakpoint belongs on the last message that came out of the database,
+ * NOT on the newest one. Only persisted history replays byte-identically next
+ * turn; the current message carries a sender block and this turn's retrieved
+ * context, neither of which is stored, so replaying it from the database
+ * yields different text. A breakpoint on it would cache a prefix that can
+ * never match again — and because a cache read only lands at a breakpoint,
+ * one mismatched message costs the whole history, every turn.
+ *
+ * A negative index (a turn with no history yet) simply adds no breakpoint.
+ */
+function tagMessageForCaching(
+  messages: ModelMessage[],
+  index: number
+): ModelMessage[] {
+  const target = index >= 0 ? messages[index] : undefined;
+  if (!target) return messages;
   const existing =
-    (last as { providerOptions?: Record<string, unknown> }).providerOptions ??
+    (target as { providerOptions?: Record<string, unknown> }).providerOptions ??
     {};
   return [
-    ...messages.slice(0, lastIdx),
+    ...messages.slice(0, index),
     {
-      ...last,
+      ...target,
       providerOptions: { ...existing, ...ANTHROPIC_CACHE_CONTROL },
     } as ModelMessage,
+    ...messages.slice(index + 1),
   ];
+}
+
+/**
+ * Prepends this turn's ephemeral context to the newest message, keeping it
+ * behind the cache breakpoint where changing it costs nothing.
+ */
+function prependTurnContext(
+  messages: ModelMessage[],
+  block: string | null
+): ModelMessage[] {
+  const lastIdx = messages.length - 1;
+  const last = messages[lastIdx];
+  if (!block || !last) return messages;
+  const content =
+    typeof last.content === "string"
+      ? `${block}\n\n${last.content}`
+      : [
+          { type: "text" as const, text: block },
+          ...(last.content as Array<Record<string, unknown>>),
+        ];
+  return [...messages.slice(0, lastIdx), { ...last, content } as ModelMessage];
 }
 
 // errors
@@ -324,12 +358,10 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
     }
   }
   const { stable: systemStable, variable: systemVariable } = getSystemPrompt({
-    userFacts,
     messageContext: ctx.messageContext,
     guildId: toolContext.guildId,
     channelId: toolContext.channelId,
     conversationSummary: ctx.conversationSummary,
-    logbookContext: ctx.logbookContext,
     model: modelId,
   });
 
@@ -365,8 +397,17 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
     );
   }
 
+  // Everything that changes turn to turn rides on the newest message, behind
+  // the breakpoint. The breakpoint itself stays on the last message that came
+  // from the database — the only span that replays identically next turn.
+  const historyBreakpointIndex = messages.length - 2;
+  const withTurnContext = prependTurnContext(
+    messages,
+    buildTurnContext({ userFacts, logbookContext: ctx.logbookContext })
+  );
+
   // manual agentic loop — lets us inject skill MCP tools between steps
-  let currentMessages = messages;
+  let currentMessages = withTurnContext;
   const allResponseMessages: ChatResponseMessage[] = [];
   let totalUsage: LanguageModelUsage = {
     inputTokens: 0,
@@ -426,7 +467,7 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
       model,
       messages: [
         ...systemMessages,
-        ...tagLastMessageForCaching(messagesForCall),
+        ...tagMessageForCaching(messagesForCall, historyBreakpointIndex),
       ],
       maxOutputTokens: maxOutputTokens(),
       maxRetries: llmMaxRetries(),
@@ -513,7 +554,7 @@ async function runTurn(ctx: ChatContext): Promise<ChatResult> {
         model,
         messages: [
           ...systemMessages,
-          ...tagLastMessageForCaching(currentMessages),
+          ...tagMessageForCaching(currentMessages, historyBreakpointIndex),
         ],
         tools: markLastToolForCaching(tools),
         stopWhen: stepCountIs(1),
