@@ -437,34 +437,10 @@ test("output past the cap is truncated and flagged", async () => {
 
 /**
  * A `sleep 30` that returns the instant the idle clock is advanced by 1000ms
- * proves the idle killer fired — the command never got to run its course.
- *
- * The *shape* of the reported failure is another matter: shell.ts ignores the
- * spawn error only when `err.code === "ERR_CHILD_PROCESS_ABORTED"`, but Node
- * raises `ABORT_ERR` for an AbortSignal kill, so the error handler settles the
- * result before the close handler can label it as an idle timeout. The
- * intended contract is pinned separately below.
+ * proves the idle killer fired — the command never got to run its course —
+ * and the result names the idle timeout so the model can act on it.
  */
 test("a silent command is killed once the idle timeout elapses", async () => {
-  const pending = execShell({ command: "sleep 30", timeout: 1000 });
-
-  await vi.advanceTimersByTimeAsync(1000);
-  const result = await pending;
-
-  assert.equal(result.exitCode, 1);
-  assert.match(result.stderr ?? "", /operation was aborted/i);
-  assert.equal(result.stdout, "");
-
-  // the SIGKILL escalation fires 5s after the SIGTERM; the child is long gone
-  // by then, and the escalation must not blow up on an exited process
-  await vi.advanceTimersByTimeAsync(5000);
-  await realSleep(20);
-});
-
-// KNOWN BUG (see the note above): the idle killer is supposed to report exit
-// 137 with a reason the model can act on. Delete the `.fails` once the
-// `ERR_CHILD_PROCESS_ABORTED` guard in shell.ts is widened to cover ABORT_ERR.
-test.fails("an idle kill should report exit 137 and name the idle timeout", async () => {
   const pending = execShell({ command: "sleep 30", timeout: 1000 });
 
   await vi.advanceTimersByTimeAsync(1000);
@@ -475,6 +451,12 @@ test.fails("an idle kill should report exit 137 and name the idle timeout", asyn
     result.stderr,
     "Command was idle for 1000ms with no output and was terminated."
   );
+  assert.equal(result.stdout, "");
+
+  // the SIGKILL escalation fires 5s after the SIGTERM; the child is long gone
+  // by then, and the escalation must not blow up on an exited process
+  await vi.advanceTimersByTimeAsync(5000);
+  await realSleep(20);
 });
 
 test("output keeps a slow command alive past its idle window", async () => {
@@ -552,13 +534,12 @@ test("a backgrounded command that goes idle stops running and delivers a result"
   await vi.advanceTimersByTimeAsync(3000);
   await realSleep(300);
 
-  // the job leaves "running" and its result is retrievable exactly once.
-  // the status would be "terminated" with exit 137 if the idle kill were
-  // labelled correctly — see the KNOWN BUG note on the idle timeout tests.
+  // the idle kill surfaces as a termination, and the result is retrievable
+  // exactly once
   const status = await jobStatus(jobId);
-  assert.notEqual(status.status, "running");
-  assert.notEqual(status.exitCode, 0);
-  assert.match(status.stderr ?? "", /operation was aborted/i);
+  assert.equal(status.status, "terminated");
+  assert.equal(status.exitCode, 137);
+  assert.match(status.stderr ?? "", /idle for 8000ms/);
   assert.deepEqual(await jobStatus(jobId), {
     error: "Job not found or already retrieved.",
   });

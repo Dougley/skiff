@@ -253,9 +253,11 @@ function startCommand(
     });
 
     child.on("error", (err: NodeJS.ErrnoException) => {
-      // ERR_CHILD_PROCESS_ABORTED fires when our AbortSignal kills the process —
-      // the close event will follow and settle the result
-      if (err.code === "ERR_CHILD_PROCESS_ABORTED") return;
+      // fires when our AbortSignal kills the process (ABORT_ERR on current
+      // Node, ERR_CHILD_PROCESS_ABORTED historically) — the close event will
+      // follow and settle the result
+      if (err.code === "ABORT_ERR" || err.code === "ERR_CHILD_PROCESS_ABORTED")
+        return;
       settle({
         exitCode: 1,
         stdout: stdoutBuf,
