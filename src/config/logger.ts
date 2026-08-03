@@ -1,5 +1,9 @@
 import { createConsola } from "consola";
 
+// `textualoggerLevel` runs while `logger` is still being initialized, so the
+// invalid-level warning has to wait until after `createConsola` returns.
+let invalidLevel: string | null = null;
+
 function textualoggerLevel(level: string): number {
   switch (level.toLowerCase()) {
     case "fatal":
@@ -24,7 +28,7 @@ function textualoggerLevel(level: string): number {
       if (!Number.isNaN(parsedLevel)) {
         return parsedLevel;
       }
-      logger.warn(`Invalid log level "${level}", defaulting to "info" (3)`);
+      invalidLevel = level;
       return 3; // Default to 'info' level
     }
   }
@@ -33,6 +37,10 @@ function textualoggerLevel(level: string): number {
 const logger = createConsola({
   level: process.env.LOG_LEVEL ? textualoggerLevel(process.env.LOG_LEVEL) : 3,
 });
+
+if (invalidLevel !== null) {
+  logger.warn(`Invalid log level "${invalidLevel}", defaulting to "info" (3)`);
+}
 
 export { logger };
 

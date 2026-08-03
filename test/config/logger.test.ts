@@ -47,19 +47,8 @@ test("accepts a raw numeric level", async () => {
   assert.equal(await loggerLevelFor("2"), 2);
 });
 
-test("an unrecognised LOG_LEVEL currently fails the import", async () => {
-  // The `default:` arm of textualoggerLevel calls `logger.warn(...)`, but
-  // `logger` is the const being initialised by that very expression, so the
-  // fallback to level 3 is never reached — the module throws on the TDZ
-  // access instead. Locked in so a fix has to update this expectation.
-  process.env.LOG_LEVEL = "not-a-level";
-  vi.resetModules();
-
-  await assert.rejects(
-    () => import("../../src/config/logger.js"),
-    (error: unknown) =>
-      error instanceof ReferenceError && /logger/.test(error.message)
-  );
+test("an unrecognised LOG_LEVEL falls back to info", async () => {
+  assert.equal(await loggerLevelFor("not-a-level"), 3);
 });
 
 test("re-exports consola utils", async () => {
