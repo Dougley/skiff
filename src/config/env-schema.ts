@@ -20,7 +20,16 @@ export const environmentVariableSchema = z.object({
     }, "DISCORD_BOT_TOKEN seems invalid"),
   DATABASE_URL: z.string().default("file://pg_data"),
   LOG_LEVEL: z
-    .enum(["trace", "debug", "info", "warn", "error", "fatal"])
+    .enum([
+      "trace",
+      "debug",
+      "info",
+      "warn",
+      "error",
+      "fatal",
+      "silent",
+      "verbose",
+    ])
     .default("info"),
   NODE_ENV: z
     .enum(["development", "production", "test"])
