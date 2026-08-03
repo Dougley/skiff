@@ -240,13 +240,15 @@ function startCommand(
       resetIdle();
     });
 
+    const idleKillResult = () => ({
+      exitCode: 137,
+      stdout: stdoutBuf,
+      stderr: `Command was idle for ${timeoutMs}ms with no output and was terminated.`,
+    });
+
     child.on("close", (code) => {
       if (idleKilled) {
-        settle({
-          exitCode: 137,
-          stdout: stdoutBuf,
-          stderr: `Command was idle for ${timeoutMs}ms with no output and was terminated.`,
-        });
+        settle(idleKillResult());
         return;
       }
       settle({ exitCode: code ?? 0, stdout: stdoutBuf, stderr: stderrBuf });
@@ -254,10 +256,17 @@ function startCommand(
 
     child.on("error", (err: NodeJS.ErrnoException) => {
       // fires when our AbortSignal kills the process (ABORT_ERR on current
-      // Node, ERR_CHILD_PROCESS_ABORTED historically) — the close event will
-      // follow and settle the result
-      if (err.code === "ABORT_ERR" || err.code === "ERR_CHILD_PROCESS_ABORTED")
+      // Node, ERR_CHILD_PROCESS_ABORTED historically). Usually a close event
+      // follows and settles the result, but when the abort lands before the
+      // process has spawned there is no close at all — settle here with the
+      // same labelled result; whichever event arrives first wins.
+      if (
+        err.code === "ABORT_ERR" ||
+        err.code === "ERR_CHILD_PROCESS_ABORTED"
+      ) {
+        if (idleKilled) settle(idleKillResult());
         return;
+      }
       settle({
         exitCode: 1,
         stdout: stdoutBuf,

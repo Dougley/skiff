@@ -532,7 +532,7 @@ test("a backgrounded command that goes idle stops running and delivers a result"
 
   // 3s more of silence crosses the 8s idle threshold
   await vi.advanceTimersByTimeAsync(3000);
-  await realSleep(300);
+  await realSleep(1000);
 
   // the idle kill surfaces as a termination, and the result is retrievable
   // exactly once
@@ -552,12 +552,15 @@ test("a backgrounded command that goes idle stops running and delivers a result"
 /* the background job reaper                                           */
 /* ------------------------------------------------------------------ */
 
-/** Backgrounds `count` short commands and returns their job ids. */
+/**
+ * Backgrounds `count` commands and returns their job ids. The children sleep
+ * far longer than any test runs, so no amount of machine load can make one
+ * exit before the backgrounding window is advanced — their lifetime is ended
+ * deterministically by `finishAllViaIdleKill` instead.
+ */
 async function backgroundJobs(count: number): Promise<string[]> {
   const pending = Array.from({ length: count }, () =>
-    // Long enough that no child can exit before the backgrounding window is
-    // advanced, even when a loaded machine makes 55 spawns take over a second.
-    execShell({ command: "sleep 2", timeout: MAX_TIMEOUT_MS })
+    execShell({ command: "sleep 300", timeout: MAX_TIMEOUT_MS })
   );
   await vi.advanceTimersByTimeAsync(BACKGROUND_AFTER_MS);
   const results = await Promise.all(pending);
@@ -566,15 +569,27 @@ async function backgroundJobs(count: number): Promise<string[]> {
   return ids;
 }
 
+/**
+ * Fires every job's idle killer by advancing past the idle timeout, then
+ * gives the real SIGTERM deaths a moment to settle. Jobs finish while the
+ * fake clock stands still, so they all share one `finishedAt` and the
+ * reaper's oldest-first order stays insertion order.
+ */
+async function finishAllViaIdleKill(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(MAX_TIMEOUT_MS);
+  await realSleep(1000);
+}
+
 test("the reaper trims finished jobs back to the cap, oldest first", async () => {
   const ids = await backgroundJobs(MAX_BACKGROUND_JOBS + 5);
 
   // a sweep while everything is still running must not touch anything: a
   // running job has no result to hand back yet
   await vi.advanceTimersByTimeAsync(REAPER_INTERVAL_MS);
-  await realSleep(2500);
+  assert.equal((await jobStatus(ids[0] ?? "")).status, "running");
 
   // now that they have all finished, the next sweep drops the overflow
+  await finishAllViaIdleKill();
   await vi.advanceTimersByTimeAsync(REAPER_INTERVAL_MS);
 
   const missing: string[] = [];
@@ -588,11 +603,11 @@ test("the reaper trims finished jobs back to the cap, oldest first", async () =>
 
 test("finished jobs expire once their TTL is up", async () => {
   const ids = await backgroundJobs(2);
-  await realSleep(2500);
+  await finishAllViaIdleKill();
 
   // well short of the TTL, the results are still waiting to be collected
   await vi.advanceTimersByTimeAsync(REAPER_INTERVAL_MS);
-  assert.equal((await jobStatus(ids[0] ?? "")).status, "done");
+  assert.equal((await jobStatus(ids[0] ?? "")).status, "terminated");
 
   await vi.advanceTimersByTimeAsync(JOB_TTL_MS + REAPER_INTERVAL_MS);
   assert.deepEqual(await jobStatus(ids[1] ?? ""), {
